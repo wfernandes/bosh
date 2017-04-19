@@ -237,7 +237,7 @@ module Bosh::Dev::Sandbox
       @database_proxy && @database_proxy.stop
 
       FileUtils.rm_f(dns_db_path)
-      FileUtils.rm_rf(agent_tmp_path)
+      # FileUtils.rm_rf(agent_tmp_path)
       FileUtils.rm_rf(blobstore_storage_dir)
     end
 
@@ -427,7 +427,7 @@ module Bosh::Dev::Sandbox
       conf = File.join(sandbox_root, NATS_CONFIG )
 
       @nats_process = Service.new(
-        %W[#{gnatsd_path} -c #{conf} -T -D ],
+        %W[#{gnatsd_path} -c #{conf} -T -DV ],
         {stdout: $stdout, stderr: $stderr},
         @logger
       )

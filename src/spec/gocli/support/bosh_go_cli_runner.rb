@@ -82,7 +82,7 @@ module Bosh::Spec
       @logger.info("Command took #{time} seconds")
 
       if exit_code != 0 && !failure_expected
-        if output =~ /bosh task (\d+) --debug/ || output =~ /Task (\d+) error/
+        if output =~ /bosh task (\d+) --debug/ || output =~ /Task (\d+) error/ || output =~ /Task (\d+) timeout/
           print_task_debug_logs($1, options)
         end
 
