@@ -22,15 +22,15 @@ module Bosh::Director
 
     # hybrid_runtime_config_hash a resolved raw_runtime_config_hash except for properties
     attr_reader :hybrid_runtime_config_hash
-    attr_reader :raw_runtime_config_hash
+    # hybrid_cloud_config_hash a resolved raw_cloud_config_hash except for cloud_properties
+    attr_reader :hybrid_cloud_config_hash
 
-    attr_reader :cloud_config_hash
-
-    def initialize(hybrid_manifest_hash, raw_manifest_hash, cloud_config_hash, hybrid_runtime_config_hash, raw_runtime_config_hash)
+    def initialize(hybrid_manifest_hash, raw_manifest_hash, hybrid_cloud_config_hash, raw_cloud_config_hash, hybrid_runtime_config_hash, raw_runtime_config_hash)
       @hybrid_manifest_hash = hybrid_manifest_hash
       @raw_manifest_hash = raw_manifest_hash
 
-      @cloud_config_hash = cloud_config_hash
+      @hybrid_cloud_config_hash = hybrid_cloud_config_hash
+      @raw_cloud_config_hash = raw_cloud_config_hash
 
       @hybrid_runtime_config_hash = hybrid_runtime_config_hash
       @raw_runtime_config_hash = raw_runtime_config_hash
@@ -50,7 +50,7 @@ module Bosh::Director
       raw = options.fetch(:raw, false)
       merge_manifests(
         raw ? @raw_manifest_hash : @hybrid_manifest_hash,
-        @cloud_config_hash,
+        raw ? @raw_cloud_config_hash : @hybrid_cloud_config_hash,
         raw ? @raw_runtime_config_hash : @hybrid_runtime_config_hash
       )
     end
@@ -63,9 +63,8 @@ module Bosh::Director
 
       cloud_config = nil if ignore_cloud_config
 
-      cloud_config_hash =  cloud_config.nil? ? nil : cloud_config.manifest
-
-      raw_runtime_config_hash = runtime_config.nil? ? nil : runtime_config.raw_manifest
+      raw_cloud_config_hash =  cloud_config.raw_manifest unless cloud_config.nil?
+      raw_runtime_config_hash = runtime_config.raw_manifest unless runtime_config.nil?
 
       manifest_hash = manifest_hash.nil? ? {} : manifest_hash
 
@@ -74,13 +73,16 @@ module Bosh::Director
       if resolve_interpolation
         variables_interpolator = Bosh::Director::ConfigServer::VariablesInterpolator.new
         hybrid_manifest_hash = variables_interpolator.interpolate_deployment_manifest(manifest_hash)
-        hybrid_runtime_config_hash = runtime_config.nil? || !manifest_hash['name'] ? {} : runtime_config.interpolated_manifest_for_deployment(manifest_hash['name'])
+        deployment_name = manifest_hash['name']
+        hybrid_cloud_config_hash = cloud_config.interpolated_manifest(deployment_name) unless cloud_config.nil?
+        hybrid_runtime_config_hash = runtime_config.interpolated_manifest_for_deployment(deployment_name) unless runtime_config.nil?
       else
         hybrid_manifest_hash = Bosh::Common::DeepCopy.copy(manifest_hash)
+        hybrid_cloud_config_hash = Bosh::Common::DeepCopy.copy(raw_cloud_config_hash)
         hybrid_runtime_config_hash = Bosh::Common::DeepCopy.copy(raw_runtime_config_hash)
       end
 
-      new(hybrid_manifest_hash, raw_manifest_hash, cloud_config_hash, hybrid_runtime_config_hash, raw_runtime_config_hash)
+      new(hybrid_manifest_hash, raw_manifest_hash, hybrid_cloud_config_hash, raw_cloud_config_hash, hybrid_runtime_config_hash, raw_runtime_config_hash)
     end
 
     def resolve_aliases_for_generic_hash(generic_hash)

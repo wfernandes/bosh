@@ -363,6 +363,20 @@ module Bosh::Director
         @stemcell.os == os
       end
 
+      # Assign variable set to each non-ignored instance_plan instance
+      def assign_variable_set(variable_set)
+        unignored_instance_plans.map do |instance_plan|
+          instance_plan.instance.variable_set = variable_set
+        end
+      end
+
+      # @return [Array<Models::VariableSet>] All variable sets of NON-obsolete instance_plan instances
+      def referenced_variable_sets
+        needed_instance_plans.map do |instance_plan|
+            instance_plan.instance.variable_set
+        end
+      end
+
       private
 
       def run_time_dependencies
@@ -372,7 +386,7 @@ module Bosh::Director
       def get_dns_record_names
         result = []
         networks.map(&:name).each do |network_name|
-          result << DnsNameGenerator.dns_record_name('*', @name, network_name, @deployment_name)
+          result << DnsNameGenerator.dns_record_name('*', @name, network_name, @deployment_name, Config.root_domain)
         end
         result.sort
       end

@@ -12,33 +12,27 @@ module Bosh::Director
     let(:deployment) { Models::Deployment.make(name: 'test-deployment') }
 
     let(:include_index_records) { false }
-    let(:dns_records) do
-      dns_records = DnsRecords.new(2, include_index_records)
-      dns_records.add_record('id0', 'group0', 'az0', 'net0', 'deployment0', 'fake-ip0', 'fake-name0')
-      dns_records.add_record('id1', 'group1', 'az1', 'net1', 'deployment1', 'fake-ip1', 'fake-name1')
-      dns_records
-    end
+    let(:instance1) { Models::Instance.make(uuid: 'uuid1', index: 1) }
 
     before do
-      allow(Config).to receive(:canonized_dns_domain_name).and_return(domain_name)
+      allow(Config).to receive(:root_domain).and_return(domain_name)
       allow(Config).to receive(:local_dns_include_index?).and_return(false)
       allow(agent_broadcaster).to receive(:sync_dns)
     end
 
     describe 'publish and broadcast' do
+      let!(:original_local_dns_blob) { Models::LocalDnsBlob.make() }
 
       before do
-        instance1 = Models::Instance.make(
-            uuid: 'uuid1',
-            index: 1,
-        )
         Bosh::Director::Models::LocalDnsRecord.make(
             instance_id: instance1.id,
             ip: '192.0.2.101',
             deployment: 'test-deployment',
             az: 'az1',
             instance_group: 'instance1',
-            network: 'net-name1'
+            network: 'net-name1',
+            agent_id: 'fake-agent-uuid1',
+            domain: 'fake-domain-name'
         )
 
         Bosh::Director::Models::LocalDnsRecord.make(
@@ -47,7 +41,9 @@ module Bosh::Director
             deployment: 'test-deployment',
             az: 'az1',
             instance_group: 'instance1',
-            network: 'net-name3'
+            network: 'net-name3',
+            agent_id: 'fake-agent-uuid1',
+            domain: 'fake-domain-name'
         )
 
         instance2 = Models::Instance.make(
@@ -60,7 +56,9 @@ module Bosh::Director
             deployment: 'test-deployment',
             az: 'az2',
             instance_group: 'instance2',
-            network: 'net-name2'
+            network: 'net-name2',
+            agent_id: 'fake-agent-uuid2',
+            domain: 'fake-domain-name'
         )
 
         Bosh::Director::Models::LocalDnsRecord.make(instance_id: nil, ip: 'tombstone')
@@ -72,9 +70,9 @@ module Bosh::Director
         end
 
         it 'does nothing' do
-          expect(Bosh::Director::Models::LocalDnsBlob.last).to be_nil
           expect(agent_broadcaster).to_not receive(:sync_dns)
           dns.publish_and_broadcast
+          expect(Models::LocalDnsBlob.last).to eq(original_local_dns_blob)
         end
       end
 
@@ -82,6 +80,18 @@ module Bosh::Director
         before do
           allow(Config).to receive(:local_dns_enabled?).and_return(true)
           allow(blobstore).to receive(:create).and_return('blob_id_1')
+        end
+
+        it 'cleans up previous blobs each time a new one is published' do
+          expect {
+            dns.publish_and_broadcast
+          }.to change{ Models::EphemeralBlob.count }.by(1)
+
+          expect(Models::LocalDnsBlob.all).to_not include(original_local_dns_blob)
+
+          ephemeral_blob = Models::EphemeralBlob.last
+          expect(ephemeral_blob.blobstore_id).to eq(original_local_dns_blob.blobstore_id)
+          expect(ephemeral_blob.sha1).to eq(original_local_dns_blob.sha1)
         end
 
         it 'puts a blob containing the records into the blobstore' do
@@ -92,27 +102,66 @@ module Bosh::Director
                   ['192.0.2.102', 'uuid2.instance2.net-name2.test-deployment.fake-domain-name']],
               'version' => 4,
               'record_keys' =>
-                  ['id', 'instance_group', 'az', 'network', 'deployment', 'ip'],
+                  ['id', 'instance_group', 'az', 'network', 'deployment', 'ip', 'domain', 'agent_id'],
               'record_infos' => [
-                  ['uuid1', 'instance1', 'az1', 'net-name1', 'test-deployment', '192.0.2.101'],
-                  ['uuid1', 'instance1', 'az1', 'net-name3', 'test-deployment', '192.0.3.101'],
-                  ['uuid2', 'instance2', 'az2', 'net-name2', 'test-deployment', '192.0.2.102']]
+                  ['uuid1', 'instance1', 'az1', 'net-name1', 'test-deployment', '192.0.2.101', 'fake-domain-name', 'fake-agent-uuid1'],
+                  ['uuid1', 'instance1', 'az1', 'net-name3', 'test-deployment', '192.0.3.101', 'fake-domain-name', 'fake-agent-uuid1'],
+                  ['uuid2', 'instance2', 'az2', 'net-name2', 'test-deployment', '192.0.2.102', 'fake-domain-name', 'fake-agent-uuid2']]
           })
           expect(blobstore).to receive(:create).with(expected_records).and_return('blob_id_1')
           dns.publish_and_broadcast
         end
 
-        it 'creates a model represnting the blob' do
+        it 'creates a model representing the blob' do
           dns.publish_and_broadcast
           local_dns_blob = Bosh::Director::Models::LocalDnsBlob.last
           expect(local_dns_blob.blobstore_id).to eq('blob_id_1')
-          expect(local_dns_blob.sha1).to eq('a0dcf2caa8d2ffdfc1707f9c54f58b70b64ea7e3')
+          expect(local_dns_blob.sha1).to eq('935e223937b3114dcb4fd6b43c28592cf6f181d2')
           expect(local_dns_blob.version).to eq(4)
         end
 
         it 'broadcasts the blob to the agents' do
-          expect(agent_broadcaster).to receive(:sync_dns).with('blob_id_1', 'a0dcf2caa8d2ffdfc1707f9c54f58b70b64ea7e3', 4)
+          expect(agent_broadcaster).to receive(:sync_dns).with('blob_id_1', '935e223937b3114dcb4fd6b43c28592cf6f181d2', 4)
           dns.publish_and_broadcast
+        end
+
+        context 'when the root_domain is empty' do
+          before do
+            instance3 = Models::Instance.make(
+              uuid: 'uuid3',
+              index: 3,
+            )
+            Bosh::Director::Models::LocalDnsRecord.make(
+              instance_id: instance3.id,
+              ip: '192.0.2.104',
+              deployment: 'test-deployment',
+              az: 'az2',
+              instance_group: 'instance4',
+              network: 'net-name2',
+              agent_id: 'fake-agent-uuid4'
+            )
+
+          end
+
+          it 'backfills the current root_domain' do
+              expected_records = JSON.dump({
+                'records' => [
+                  ['192.0.2.101', 'uuid1.instance1.net-name1.test-deployment.fake-domain-name'],
+                  ['192.0.3.101', 'uuid1.instance1.net-name3.test-deployment.fake-domain-name'],
+                  ['192.0.2.102', 'uuid2.instance2.net-name2.test-deployment.fake-domain-name'],
+                  ['192.0.2.104', 'uuid3.instance4.net-name2.test-deployment.fake-domain-name']],
+                'version' => 5,
+                'record_keys' =>
+                  ['id', 'instance_group', 'az', 'network', 'deployment', 'ip', 'domain', 'agent_id'],
+                'record_infos' => [
+                  ['uuid1', 'instance1', 'az1', 'net-name1', 'test-deployment', '192.0.2.101', 'fake-domain-name', 'fake-agent-uuid1'],
+                  ['uuid1', 'instance1', 'az1', 'net-name3', 'test-deployment', '192.0.3.101', 'fake-domain-name', 'fake-agent-uuid1'],
+                  ['uuid2', 'instance2', 'az2', 'net-name2', 'test-deployment', '192.0.2.102', 'fake-domain-name', 'fake-agent-uuid2'],
+                  ['uuid3', 'instance4', 'az2', 'net-name2', 'test-deployment', '192.0.2.104', 'fake-domain-name', 'fake-agent-uuid4']]
+              })
+              expect(blobstore).to receive(:create).with(expected_records).and_return('blob_id_1')
+              dns.publish_and_broadcast
+          end
         end
 
         context 'when putting to the blobstore fails' do
@@ -148,11 +197,11 @@ module Bosh::Director
                      ['192.0.2.102', '2.instance2.net-name2.test-deployment.fake-domain-name']],
                  'version' => 4,
                  'record_keys' =>
-                     ['id', 'instance_group', 'az', 'network', 'deployment', 'ip'],
+                     ['id', 'instance_group', 'az', 'network', 'deployment', 'ip', 'domain', 'agent_id'],
                  'record_infos' => [
-                     ['uuid1', 'instance1', 'az1', 'net-name1', 'test-deployment', '192.0.2.101'],
-                     ['uuid1', 'instance1', 'az1', 'net-name3', 'test-deployment', '192.0.3.101'],
-                     ['uuid2', 'instance2', 'az2', 'net-name2', 'test-deployment', '192.0.2.102']]
+                     ['uuid1', 'instance1', 'az1', 'net-name1', 'test-deployment', '192.0.2.101', 'fake-domain-name', 'fake-agent-uuid1'],
+                     ['uuid1', 'instance1', 'az1', 'net-name3', 'test-deployment', '192.0.3.101', 'fake-domain-name', 'fake-agent-uuid1'],
+                     ['uuid2', 'instance2', 'az2', 'net-name2', 'test-deployment', '192.0.2.102', 'fake-domain-name', 'fake-agent-uuid2']]
              })
 
             expect(blobstore).to receive(:create).with(expected_records).and_return('blob_id_1')
@@ -178,38 +227,5 @@ module Bosh::Director
       end
     end
 
-    describe '#cleanup_blobs' do
-      context 'when there are no entries' do
-        it 'does not do anything' do
-          expect(Bosh::Director::Models::LocalDnsBlob.count).to eq 0
-          expect(Bosh::Director::Models::EphemeralBlob.count).to eq 0
-          expect { dns.cleanup_blobs }.to_not change { Bosh::Director::Models::LocalDnsBlob.count }
-          expect(Bosh::Director::Models::LocalDnsBlob.count).to eq 0
-          expect(Bosh::Director::Models::EphemeralBlob.count).to eq 0
-        end
-      end
-
-      context 'when there is one entry' do
-        before { Bosh::Director::Models::LocalDnsBlob.make }
-
-        it 'leaves the only and newest blob' do
-          ephemeral_count = Bosh::Director::Models::EphemeralBlob.count
-          expect { dns.cleanup_blobs }.to_not change { Bosh::Director::Models::LocalDnsBlob.count }
-          expect(Bosh::Director::Models::LocalDnsBlob.all[0].id).to eq(1)
-          expect(Bosh::Director::Models::EphemeralBlob.count).to eq(ephemeral_count)
-        end
-      end
-
-      context 'when there are some entries' do
-        before { 3.times { Bosh::Director::Models::LocalDnsBlob.make } }
-
-        it 'leaves the newest blob' do
-          ephemeral_count = Bosh::Director::Models::EphemeralBlob.count
-          expect { dns.cleanup_blobs }.to change { Bosh::Director::Models::LocalDnsBlob.count }.from(3).to(1)
-          expect(Bosh::Director::Models::LocalDnsBlob.all[0].id).to eq(3)
-          expect(Bosh::Director::Models::EphemeralBlob.count).to eq(ephemeral_count + 2)
-        end
-      end
-    end
   end
 end

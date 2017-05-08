@@ -16,7 +16,7 @@ describe 'local DNS', type: :integration do
   end
 
   let(:ip_regexp) { /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/ }
-  let(:job_name) { 'job_to_test_local_dns' }
+  let(:instance_group_name) { 'job_to_test_local_dns' }
   let(:canonical_job_name) { 'job-to-test-local-dns' }
   let(:deployment_name) { 'simple.local_dns' }
   let(:canonical_deployment_name) { 'simplelocal-dns' }
@@ -28,6 +28,17 @@ describe 'local DNS', type: :integration do
     it 'sends sync_dns action agent and updates /etc/hosts' do
       initial_deployment(1)
     end
+  end
+
+  it 'sends records for vms that have not yet been created' do
+    initial_manifest = initial_manifest(2, 1)
+    initial_manifest['jobs'][0]['templates'] = ['name' => 'local_dns_records_json']
+    deploy_simple_manifest(manifest_hash: initial_manifest)
+
+    instance = director.instance('job_to_test_local_dns', '0', deployment_name: deployment_name)
+
+    recordsHash = JSON.parse(instance.read_file('records-at-prestart.json'))
+    expect(recordsHash['records'].size).to equal(2)
   end
 
   context 'upgrade and downgrade increasing concurrency' do
@@ -43,7 +54,7 @@ describe 'local DNS', type: :integration do
 
         records_json = parse_agent_records_json(9)
         expect(records_json['records']).to match_array(generate_instance_records)
-        expect(records_json['record_keys']).to match_array(['id', 'instance_group', 'az', 'network', 'deployment', 'ip'])
+        expect(records_json['record_keys']).to match_array(['id', 'instance_group', 'az', 'network', 'deployment', 'ip', 'domain', 'agent_id'])
         expect(records_json['record_infos']).to match_array(generate_instance_record_infos)
         expect(records_json['version']).to eq(10)
       end
@@ -137,7 +148,28 @@ describe 'local DNS', type: :integration do
     end
   end
 
-  def initial_deployment(number_of_instances, max_in_flight=1)
+  context 'ordering of tombstone deletion' do
+    let(:manifest_deployment) { initial_deployment(2, 1) }
+
+    it 'deploys and downgrades with max_in_flight' do
+      manifest_deployment['jobs'][0]['instances'] = 1
+      deploy_simple_manifest(manifest_hash: manifest_deployment)
+
+      output = bosh_runner.run('task --debug 5')
+      puts output
+
+      logpos = /Deleting local dns records for /.match(output).begin(0)
+      expect(logpos).to be > 0
+
+      deletepos = /DELETE FROM ["`]local_dns_records["`] WHERE ["`]id["`] = 2/.match(output).begin(0)
+      expect(deletepos).to be > logpos
+
+      insertpos = /INSERT INTO ["`]local_dns_records["`] /.match(output).begin(0)
+      expect(insertpos).to be > deletepos
+    end
+  end
+
+  def initial_manifest(number_of_instances, max_in_flight)
     manifest_deployment = Bosh::Spec::Deployments.test_release_manifest
     manifest_deployment.merge!(
       {
@@ -149,11 +181,16 @@ describe 'local DNS', type: :integration do
         },
 
         'jobs' => [Bosh::Spec::Deployments.simple_job(
-          name: job_name,
+          name: instance_group_name,
           instances: number_of_instances)]
       })
     manifest_deployment['name'] = deployment_name
     manifest_deployment['jobs'][0]['networks'][0]['name'] = network_name
+    manifest_deployment
+  end
+
+  def initial_deployment(number_of_instances, max_in_flight=1)
+    manifest_deployment = initial_manifest(number_of_instances, max_in_flight)
     deploy_simple_manifest(manifest_hash: manifest_deployment)
 
     etc_hosts = parse_agent_etc_hosts(number_of_instances - 1)
@@ -193,7 +230,7 @@ describe 'local DNS', type: :integration do
   def generate_instance_record_infos
     director.instances(deployment_name: deployment_name).map do |instance|
       az = instance.availability_zone.empty? ? nil : instance.availability_zone
-      [instance.id, instance.job_name, az, 'local_dns', 'simple.local_dns', instance.ips[0]]
+      [instance.id, instance.job_name, az, 'local_dns', 'simple.local_dns', instance.ips[0], 'bosh', instance.agent_id]
     end
   end
 

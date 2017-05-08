@@ -4,16 +4,16 @@ module Bosh
   module Director
     module DeploymentPlan
       class InstancePlan
-        def initialize(attrs)
-          @existing_instance = attrs.fetch(:existing_instance)
-          @desired_instance = attrs.fetch(:desired_instance)
-          @instance = attrs.fetch(:instance)
-          @network_plans = attrs.fetch(:network_plans, [])
-          @skip_drain = attrs.fetch(:skip_drain, false)
-          @recreate_deployment = attrs.fetch(:recreate_deployment, false)
-          @logger = attrs.fetch(:logger, Config.logger)
-          @dns_manager = DnsManagerProvider.create
-          @tags = attrs.fetch(:tags, {})
+        def initialize(existing_instance:, desired_instance:, instance:, network_plans: [], skip_drain: false, recreate_deployment: false, logger: Config.logger, tags: {})
+          @existing_instance = existing_instance
+          @desired_instance = desired_instance
+          @instance = instance
+          @network_plans = network_plans
+          @skip_drain = skip_drain
+          @recreate_deployment = recreate_deployment
+          @logger = logger
+          @tags = tags
+          @powerdns_manager = PowerDnsManagerProvider.create
         end
 
         attr_reader :desired_instance, :existing_instance, :instance, :skip_drain, :recreate_deployment, :tags
@@ -78,7 +78,7 @@ module Bosh
         end
 
         def should_be_ignored?
-           !instance_model.nil? && instance_model.ignore
+          !instance_model.nil? && instance_model.ignore
         end
 
         def needs_restart?
@@ -142,22 +142,21 @@ module Bosh
         end
 
         def dns_changed?
-          changed = false
+          power_dns_changed = false
 
-          if @dns_manager.dns_enabled?
-            changed = network_settings.dns_record_info.any? do |name, ip|
-              not_found = @dns_manager.find_dns_record(name, ip).nil?
+          if @powerdns_manager.dns_enabled?
+            power_dns_changed = network_settings.dns_record_info.any? do |name, ip|
+              not_found = @powerdns_manager.find_dns_record(name, ip).nil?
               @logger.debug("#{__method__} The requested dns record with name '#{name}' and ip '#{ip}' was not found in the db.") if not_found
               not_found
             end
           end
 
-          if !changed && Config.local_dns_enabled?
-            changed = @dns_manager.find_local_dns_record(instance_model).empty? # @todo fix (if local_dns_index is enabled at a later stage)
-            # @logger.debug("#{__method__} The requested dns record with name '#{name}' and ip '#{ip}' was not found in the db.") if not_found
+          diff = LocalDnsRepo.new(@logger, Config.root_domain).diff(instance_model)
+          if diff.changes?
+            log_changes(:local_dns_changed?, diff.obsolete + diff.unaffected, diff.unaffected + diff.missing, instance)
           end
-
-          changed
+          power_dns_changed || diff.changes?
         end
 
         def configuration_changed?
@@ -203,7 +202,8 @@ module Bosh
             @instance.current_networks,
             @instance.availability_zone,
             @instance.index,
-            @instance.uuid
+            @instance.uuid,
+            @powerdns_manager.root_domain,
           )
         end
 
@@ -301,7 +301,7 @@ module Bosh
           modified_network_settings = Bosh::Common::DeepCopy.copy(network_settings)
 
           modified_network_settings.each do |name, network_setting|
-            network_setting.delete_if{|key, value| key == "dns_record_name"}
+            network_setting.delete_if { |key, value| key == "dns_record_name" }
           end
           modified_network_settings
         end

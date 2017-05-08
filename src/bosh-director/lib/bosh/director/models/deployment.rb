@@ -49,7 +49,7 @@ module Bosh::Director::Models
       return {} if tags.nil? || tags.empty?
 
       client = Bosh::Director::ConfigServer::ClientFactory.create(Bosh::Director::Config.logger).create_client
-      client.interpolate(tags, current_variable_set)
+      client.interpolate_with_versioning(tags, current_variable_set)
     end
 
     def current_variable_set
@@ -58,6 +58,10 @@ module Bosh::Director::Models
 
     def last_successful_variable_set
       variable_sets_dataset.where(deployed_successfully: true).order(Sequel.desc(:created_at)).limit(1).first
+    end
+
+    def cleanup_variable_sets(variable_sets_to_keep)
+      variable_sets_dataset.exclude(:id => variable_sets_to_keep.map(&:id)).delete
     end
   end
 

@@ -128,9 +128,8 @@ module Bosh::Director::Models
     active      { true }
     disk_cid    { Sham.disk_cid }
     instance    do
-      vm = Vm.make
       is = Instance.make
-      is.add_vm vm
+      vm = Vm.make(instance_id: is.id)
       is.active_vm = vm
     end
   end
@@ -169,7 +168,7 @@ module Bosh::Director::Models
   end
 
   CloudConfig.blueprint do
-    manifest { Bosh::Spec::Deployments.simple_cloud_config }
+    raw_manifest { Bosh::Spec::Deployments.simple_cloud_config }
   end
 
   RuntimeConfig.blueprint do
@@ -218,6 +217,7 @@ module Bosh::Director::Models
     blobstore_id { Sham.blobstore_id }
     sha1         { Sham.sha1 }
     created_at   { Time.new }
+    version      { 1 }
   end
 
   LocalDnsRecord.blueprint do

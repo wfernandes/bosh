@@ -25,7 +25,7 @@ module Bosh::Director
         if local_dns_blob.nil? || local_dns_blob.version < max_dns_record_version
           @logger.debug("Exporting local dns records max_dns_record_version:#{max_dns_record_version} local_dns_blob.version:#{local_dns_blob.nil? ? nil : local_dns_blob.version}")
           records = export_dns_records
-          local_dns_blob = publish(records)
+          local_dns_blob = create_dns_blob(records)
         end
 
         @logger.debug("Broadcasting local_dns_blob.version:#{local_dns_blob.version}")
@@ -33,10 +33,10 @@ module Bosh::Director
       end
     end
 
-    def cleanup_blobs
-      dns_blobs = Models::LocalDnsBlob.order(:id).all
-      last_record = dns_blobs.last
-      dns_blobs = dns_blobs - [last_record]
+    private
+
+    def cleanup_blobs(new_blob)
+      dns_blobs = Models::LocalDnsBlob.where('id < ?', new_blob.id)
       return if dns_blobs.empty?
 
       dns_blobs.each do |blob|
@@ -47,22 +47,24 @@ module Bosh::Director
           raise e unless (error_message.include?('unique') || error_message.include?('duplicate'))
         end
       end
-      Models::LocalDnsBlob.where('id < ?', last_record.id).delete
+      dns_blobs.delete
     end
-
-    private
 
     def broadcast(blob)
       @agent_broadcaster.sync_dns(blob.blobstore_id, blob.sha1, blob.version) unless blob.nil?
     end
 
-    def publish(dns_records)
-      Models::LocalDnsBlob.create(
+    def create_dns_blob(dns_records)
+      new_blob = Models::LocalDnsBlob.create(
           blobstore_id: @blobstore_provider.call.create(dns_records.to_json),
           sha1: dns_records.shasum,
           version: dns_records.version,
           created_at: Time.new
       )
+
+      cleanup_blobs(new_blob)
+
+      new_blob
     end
 
     def export_dns_records
@@ -75,8 +77,17 @@ module Bosh::Director
 
       dns_records = DnsRecords.new(version, Config.local_dns_include_index?)
       local_dns_records.each do |dns_record|
-        dns_records.add_record(dns_record.instance.uuid, dns_record.instance.index, dns_record.instance_group,
-                               dns_record.az, dns_record.network, dns_record.deployment, dns_record.ip)
+        dns_records.add_record(
+          dns_record.instance.uuid,
+          dns_record.instance.index,
+          dns_record.instance_group,
+          dns_record.az,
+          dns_record.network,
+          dns_record.deployment,
+          dns_record.ip,
+          dns_record.domain.nil? ? @domain_name : dns_record.domain,
+          dns_record.agent_id
+        )
       end
       dns_records
     end

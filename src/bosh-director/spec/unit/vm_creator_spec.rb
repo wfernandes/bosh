@@ -23,7 +23,7 @@ module Bosh
           get_state: nil
         )
       end
-      let(:network_settings) { BD::DeploymentPlan::NetworkSettings.new(job.name, 'deployment_name', {'gateway' => 'name'}, [reservation], {}, availability_zone, 5, 'uuid-1').to_hash }
+      let(:network_settings) { BD::DeploymentPlan::NetworkSettings.new(job.name, 'deployment_name', {'gateway' => 'name'}, [reservation], {}, availability_zone, 5, 'uuid-1', 'bosh').to_hash }
       let(:deployment) { Models::Deployment.make(name: 'deployment_name') }
       let(:deployment_plan) do
         instance_double(DeploymentPlan::Planner, model: deployment, name: 'deployment_name', recreate: false)
@@ -31,7 +31,8 @@ module Bosh
       let(:availability_zone) do
         BD::DeploymentPlan::AvailabilityZone.new('az-1', {})
       end
-      let(:vm_type) { DeploymentPlan::VmType.new({'name' => 'fake-vm-type', 'cloud_properties' => {'ram' => '2gb'}}) }
+      let(:cloud_properties) { {'ram' => '2gb'} }
+      let(:vm_type) { DeploymentPlan::VmType.new({'name' => 'fake-vm-type', 'cloud_properties' => cloud_properties}) }
       let(:stemcell_model) { Models::Stemcell.make(:cid => 'stemcell-id', name: 'fake-stemcell', version: '123') }
       let(:stemcell) do
         stemcell_model
@@ -684,6 +685,7 @@ module Bosh
             'gargamel' => 'green'
           }
         end
+
         before do
           allow(instance_spec).to receive(:as_apply_spec).and_return({})
           allow(instance_spec).to receive(:full_spec).and_return({})
@@ -694,12 +696,58 @@ module Bosh
         end
 
         it 'should happen' do
-          expect(config_server_client).to receive(:interpolate).with(env_hash, anything).and_return(resolved_env_hash)
+          expect(config_server_client).to receive(:interpolate_with_versioning).with(env_hash, anything).and_return(resolved_env_hash)
+          expect(config_server_client).to receive(:interpolate_with_versioning).with(cloud_properties, anything).and_return(cloud_properties)
 
           expect(cloud).to receive(:create_vm) do |_, _, _, _, _, env|
             expect(env['foo']).to eq('bar')
             expect(env['smurf']).to eq('blue')
             expect(env['gargamel']).to eq('green')
+          end.and_return('new-vm-cid')
+
+          subject.create_for_instance_plan(instance_plan, ['fake-disk-cid'], tags)
+        end
+      end
+
+      context 'cloud-config interpolation' do
+        let(:client_factory) { double(Bosh::Director::ConfigServer::ClientFactory) }
+        let(:config_server_client) { double(Bosh::Director::ConfigServer::EnabledClient) }
+
+        let(:instance_spec) { instance_double('Bosh::Director::DeploymentPlan::InstanceSpec') }
+
+        let(:cloud_properties) do
+          {
+              'foo' => 'bar',
+              'smurf' => '((smurf_placeholder))',
+              'gargamel' => '((gargamel_placeholder))'
+          }
+        end
+
+        let(:resolved_cloud_properties) do
+          {
+              'foo' => 'bar',
+              'smurf' => 'blue',
+              'gargamel' => 'green'
+          }
+        end
+
+        before do
+          allow(instance_spec).to receive(:as_apply_spec).and_return({})
+          allow(instance_spec).to receive(:full_spec).and_return({})
+          allow(instance_spec).to receive(:as_template_spec).and_return({})
+          allow(instance_plan).to receive(:spec).and_return(instance_spec)
+          allow(Bosh::Director::ConfigServer::ClientFactory).to receive(:create).and_return(client_factory)
+          allow(client_factory).to receive(:create_client).and_return(config_server_client)
+        end
+
+        it 'should happen' do
+          expect(config_server_client).to receive(:interpolate_with_versioning).with({}, anything).and_return({})
+          expect(config_server_client).to receive(:interpolate_with_versioning).with(cloud_properties, anything).and_return(resolved_cloud_properties)
+
+          expect(cloud).to receive(:create_vm) do |_, _, cloud_properties, _, _, _|
+            expect(cloud_properties['foo']).to eq('bar')
+            expect(cloud_properties['smurf']).to eq('blue')
+            expect(cloud_properties['gargamel']).to eq('green')
           end.and_return('new-vm-cid')
 
           subject.create_for_instance_plan(instance_plan, ['fake-disk-cid'], tags)

@@ -16,12 +16,12 @@ module Bosh::Director
       @cloud = Config.cloud
       @agent = double(Bosh::Director::AgentClient)
 
+      allow(@agent).to receive(:sync_dns) do |_,_,_,&blk|
+        blk.call({'value' => 'synced'})
+      end.and_return(0)
+
       deployment_model = Models::Deployment.make(manifest: YAML.dump(Bosh::Spec::Deployments.legacy_manifest))
 
-      @vm = Models::Vm.make(
-        cid: 'vm-cid',
-        agent_id: 'agent-007'
-      )
 
       @instance = Models::Instance.make(
         job: 'mysql_node',
@@ -31,13 +31,20 @@ module Bosh::Director
         cloud_properties_hash: {'foo' => 'bar'},
         spec: {'networks' => networks},
       )
-      @instance.add_vm @vm
+
+      @vm = Models::Vm.make(
+        cid: 'vm-cid',
+        agent_id: 'agent-007',
+        instance_id: @instance.id
+      )
+
       @instance.active_vm = @vm
       @instance.save
       allow(Bosh::Director::Config).to receive(:current_job).and_return(job)
       allow(Bosh::Director::Config).to receive(:name).and_return('fake-director-name')
     end
 
+    let!(:local_dns_blob) { Models::LocalDnsBlob.make }
     let(:event_manager) { Bosh::Director::Api::EventManager.new(true) }
     let(:job) { instance_double(Bosh::Director::Jobs::BaseJob, username: 'user', task_id: 42, event_manager: event_manager) }
 
@@ -151,6 +158,10 @@ module Bosh::Director
           allow(SecureRandom).to receive_messages(uuid: 'agent-222')
           fake_app
           allow(App.instance.blobstores.blobstore).to receive(:create).and_return('fake-blobstore-id')
+
+          allow(fake_new_agent).to receive(:sync_dns) do |_,_,_,&blk|
+            blk.call({'value' => 'synced'})
+          end.and_return(0)
         end
 
         def expect_vm_to_be_created

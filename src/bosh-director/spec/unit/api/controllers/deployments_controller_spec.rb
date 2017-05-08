@@ -578,8 +578,8 @@ module Bosh::Director
             stemcell_1_2 = Models::Stemcell.create(name: 'stemcell-1', version: 2, cid: 123)
             stemcell_2_1 = Models::Stemcell.create(name: 'stemcell-2', version: 1, cid: 124)
 
-            old_cloud_config = Models::CloudConfig.make(manifest: {}, created_at: Time.now - 60)
-            new_cloud_config = Models::CloudConfig.make(manifest: {})
+            old_cloud_config = Models::CloudConfig.make(raw_manifest: {}, created_at: Time.now - 60)
+            new_cloud_config = Models::CloudConfig.make(raw_manifest: {})
 
             good_team = Models::Team.create(name: 'dabest')
             bad_team = Models::Team.create(name: 'daworst')
@@ -676,12 +676,6 @@ module Bosh::Director
 
           it 'returns a list of instances with vms (vm_cid != nil)' do
             15.times do |i|
-              vm_params = {
-                'agent_id' => "agent-#{i}",
-                'cid' => "cid-#{i}",
-              }
-              vm = Models::Vm.create(vm_params)
-
               instance_params = {
                 'deployment_id' => deployment.id,
                 'job' => "job-#{i}",
@@ -694,8 +688,14 @@ module Bosh::Director
               instance_params['availability_zone'] = "az0" if i == 0
               instance_params['availability_zone'] = "az1" if i == 1
               instance = Models::Instance.create(instance_params)
+              vm_params = {
+                'agent_id' => "agent-#{i}",
+                'cid' => "cid-#{i}",
+                'instance_id' => instance.id,
+              }
+
+              vm = Models::Vm.create(vm_params)
               if i < 8
-                instance.add_vm(vm)
                 instance.active_vm = vm
               end
             end
@@ -722,12 +722,6 @@ module Bosh::Director
           context 'ips' do
             it 'returns instance ip addresses' do
               15.times do |i|
-                vm_params = {
-                  'agent_id' => "agent-#{i}",
-                  'cid' => "cid-#{i}",
-                }
-                vm = Models::Vm.create(vm_params)
-
                 instance_params = {
                   'deployment_id' => deployment.id,
                   'job' => "job-#{i}",
@@ -740,8 +734,14 @@ module Bosh::Director
                 instance_params['availability_zone'] = "az0" if i == 0
                 instance_params['availability_zone'] = "az1" if i == 1
                 instance = Models::Instance.create(instance_params)
+                vm_params = {
+                  'agent_id' => "agent-#{i}",
+                  'cid' => "cid-#{i}",
+                  'instance_id': instance.id,
+                }
+
+                vm = Models::Vm.create(vm_params)
                 if i < 8
-                  instance.add_vm(vm)
                   instance.active_vm = vm
                 end
 
@@ -774,12 +774,6 @@ module Bosh::Director
 
             it 'returns network spec ip addresses' do
               15.times do |i|
-                vm_params = {
-                  'agent_id' => "agent-#{i}",
-                  'cid' => "cid-#{i}",
-                }
-                vm = Models::Vm.create(vm_params)
-
                 instance_params = {
                   'deployment_id' => deployment.id,
                   'job' => "job-#{i}",
@@ -793,8 +787,14 @@ module Bosh::Director
                 instance_params['availability_zone'] = "az0" if i == 0
                 instance_params['availability_zone'] = "az1" if i == 1
                 instance = Models::Instance.create(instance_params)
+                vm_params = {
+                  'agent_id' => "agent-#{i}",
+                  'cid' => "cid-#{i}",
+                  'instance_id' => instance.id,
+                }
+
+                vm = Models::Vm.create(vm_params)
                 if i < 8
-                  instance.add_vm(vm)
                   instance.active_vm = vm
                 end
               end
@@ -1415,7 +1415,7 @@ module Bosh::Director
               { 'CONTENT_TYPE' => 'text/yaml' },
             )
           end
-          let(:cloud_config) { Models::CloudConfig.make(manifest: {'azs' => []}) }
+          let(:cloud_config) { Models::CloudConfig.make(raw_manifest: {'azs' => []}) }
           let(:runtime_config) { Models::RuntimeConfig.make(raw_manifest: {'addons' => []}) }
 
           before do
@@ -1475,7 +1475,7 @@ module Bosh::Director
                   runtime_config: runtime_config
                 )
 
-                Models::CloudConfig.make(manifest: {'networks'=>[{'name'=>'very-cloudy-network'}]})
+                Models::CloudConfig.make(raw_manifest: {'networks'=>[{'name'=>'very-cloudy-network'}]})
 
                 manifest_hash['networks'] = [{'name'=> 'network2'}]
                 diff = post '/fake-dep-name-no-cloud-conf/diff', YAML.dump(manifest_hash), {'CONTENT_TYPE' => 'text/yaml'}

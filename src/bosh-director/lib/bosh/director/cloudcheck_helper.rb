@@ -66,20 +66,38 @@ module Bosh::Director
         true
       )
 
-      dns_manager = DnsManagerProvider.create
+      powerdns_manager = PowerDnsManagerProvider.create
+      local_dns_manager = LocalDnsManager.create(Config.root_domain, @logger)
       dns_names_to_ip = {}
+
+      root_domain = Config.root_domain
 
       apply_spec = instance_plan_to_create.existing_instance.spec
       apply_spec['networks'].each do |network_name, network|
-        index_dns_name = Bosh::Director::DnsNameGenerator.dns_record_name(instance_model.index, instance_model.job, network_name, instance_model.deployment.name)
+        index_dns_name = Bosh::Director::DnsNameGenerator.dns_record_name(
+          instance_model.index,
+          instance_model.job,
+          network_name,
+          instance_model.deployment.name,
+          root_domain,
+        )
         dns_names_to_ip[index_dns_name] = network['ip']
-        id_dns_name = Bosh::Director::DnsNameGenerator.dns_record_name(instance_model.uuid, instance_model.job, network_name, instance_model.deployment.name)
+
+        id_dns_name = Bosh::Director::DnsNameGenerator.dns_record_name(
+          instance_model.uuid,
+          instance_model.job,
+          network_name,
+          instance_model.deployment.name,
+          root_domain,
+        )
         dns_names_to_ip[id_dns_name] = network['ip']
       end
 
       @logger.debug("Updating DNS record for instance: #{instance_model.inspect}; to: #{dns_names_to_ip.inspect}")
-      dns_manager.update_dns_record_for_instance(instance_model, dns_names_to_ip)
-      dns_manager.flush_dns_cache
+      powerdns_manager.update_dns_record_for_instance(instance_model, dns_names_to_ip)
+      local_dns_manager.update_dns_record_for_instance(instance_model)
+
+      powerdns_manager.flush_dns_cache
 
       cloud_check_procedure = lambda do
         blobstore_client = App.instance.blobstores.blobstore
@@ -116,8 +134,8 @@ module Bosh::Director
       # it is not a problem, since all interactions with cpi go over cloud factory (which uses only az name)
       # but still, it is ugly and dangerous...
       availability_zone = DeploymentPlan::AvailabilityZone.new(instance_model.availability_zone,
-                                                               instance_model.cloud_properties_hash,
-                                                               nil)
+        instance_model.cloud_properties_hash,
+        nil)
 
       instance_from_model = DeploymentPlan::Instance.new(
         instance_model.job,
@@ -150,7 +168,7 @@ module Bosh::Director
     def agent_client(vm_credentials, agent_id, timeout = DEFAULT_AGENT_TIMEOUT, retries = 0)
       options = {
         :timeout => timeout,
-        :retry_methods => { :get_state => retries }
+        :retry_methods => {:get_state => retries}
       }
       @clients ||= {}
       @clients[agent_id] ||= AgentClient.with_vm_credentials_and_agent_id(vm_credentials, agent_id, options)

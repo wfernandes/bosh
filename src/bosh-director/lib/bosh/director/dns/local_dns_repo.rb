@@ -1,24 +1,26 @@
 module Bosh::Director
   class LocalDnsRepo
-
-    def initialize(logger)
+    def initialize(logger, root_domain)
       @logger = logger
+      @root_domain = root_domain
     end
 
     def update_for_instance(instance_model)
       diff = diff(instance_model)
       @logger.debug("Updating local dns records for '#{instance_model}': obsolete records: #{dump(diff.obsolete)}, new records: #{dump(diff.missing)}, unmodified records: #{dump(diff.unaffected)}")
 
-      if diff.missing.empty? && !diff.obsolete.empty?
-        insert_tombstone
-      end
+      Config.db.transaction do
+        diff.missing.each do |record_hash|
+          insert_new_record(record_hash)
+        end
 
-      diff.missing.each do |record_hash|
-        insert_new_record(record_hash)
-      end
+        diff.obsolete.each do |record_hash|
+          delete_obsolete_local_dns_records(record_hash)
+        end
 
-      diff.obsolete.each do |record_hash|
-        delete_obsolete_local_dns_records(record_hash)
+        if diff.missing.empty? && !diff.obsolete.empty?
+          insert_tombstone
+        end
       end
     end
 
@@ -36,9 +38,11 @@ module Bosh::Director
     def delete_for_instance(instance_model)
       records = Models::LocalDnsRecord.where(instance_id: instance_model.id).all
       if records.size > 0
-        insert_tombstone
-        @logger.debug("Deleting local dns records for '#{instance_model}' records: #{records.map(&:to_hash)}")
-        records.map(&:delete)
+        Config.db.transaction do
+          @logger.debug("Deleting local dns records for '#{instance_model}' records: #{records.map(&:to_hash)}")
+          records.map(&:delete)
+          insert_tombstone
+        end
       end
     end
 
@@ -46,13 +50,20 @@ module Bosh::Director
 
     def desired_record_hashes(instance_model)
       networks_and_ips(instance_model).map do |network_to_ip|
+        agent_id = nil
+        if instance_model.active_vm != nil
+          agent_id = instance_model.active_vm.agent_id
+        end
+
         {
-            :ip => network_to_ip[:ip],
-            :instance_id => instance_model.id,
-            :az => instance_model.availability_zone,
-            :network => network_to_ip[:name],
-            :deployment => instance_model.deployment.name,
-            :instance_group => instance_model.job
+          :ip => network_to_ip[:ip],
+          :instance_id => instance_model.id,
+          :az => instance_model.availability_zone,
+          :network => network_to_ip[:name],
+          :deployment => instance_model.deployment.name,
+          :instance_group => instance_model.job,
+          :agent_id => agent_id,
+          :domain => @root_domain
         }
       end
     end
@@ -101,19 +112,19 @@ module Bosh::Director
 
       "[#{record_strings.sort.join(', ')}]"
     end
-  end
 
-  class Diff
-    attr_reader :obsolete, :missing, :unaffected
+    class Diff
+      attr_reader :obsolete, :missing, :unaffected
 
-    def initialize(obsolete, missing, unaffected)
-      @obsolete = obsolete
-      @missing = missing
-      @unaffected = unaffected
-    end
+      def initialize(obsolete, missing, unaffected)
+        @obsolete = obsolete
+        @missing = missing
+        @unaffected = unaffected
+      end
 
-    def changes?
-      !obsolete.empty? || !missing.empty?
+      def changes?
+        !obsolete.empty? || !missing.empty?
+      end
     end
   end
 end
