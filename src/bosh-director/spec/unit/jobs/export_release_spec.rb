@@ -71,8 +71,6 @@ module Bosh::Director
         Models::VariableSet.create(deployment: deployment_model)
 
         allow(job).to receive(:with_deployment_lock).and_yield
-        allow(job).to receive(:with_release_lock).and_yield
-        allow(job).to receive(:with_stemcell_lock).and_yield
       end
 
       it 'raises an error when the requested release does not exist' do
@@ -140,8 +138,6 @@ module Bosh::Director
           it 'locks the deployment, release, and selected stemcell' do
             lock_timeout = {:timeout=>900} # 15 minutes. 15 * 60
             expect(job).to receive(:with_deployment_lock).with(deployment_manifest['name'], lock_timeout).and_yield
-            expect(job).to receive(:with_release_lock).with(release_name, lock_timeout).and_yield
-            expect(job).to receive(:with_stemcell_lock).with('ubuntu-stemcell', '1', lock_timeout).and_yield
 
             job.perform
           end
@@ -410,8 +406,7 @@ version: 0.1-dev
         end
 
         context 'that is successfully placed in the blobstore' do
-
-          it 'should record the blobstore id of the created tarball in the ephemeral_blobs table' do
+          it 'should record the blobstore id of the created tarball in the blobs table' do
             expected_blobstore_id = '77da2388-ecf7-4cf6-be52-b054a07ea307'
 
             allow(blobstore_client).to receive(:get)
@@ -422,11 +417,12 @@ version: 0.1-dev
 
             expect {
               job.perform
-            }.to change(Bosh::Director::Models::EphemeralBlob, :count).from(0).to(1)
+            }.to change(Bosh::Director::Models::Blob, :count).from(0).to(1)
 
-            ephemeral_blob = Bosh::Director::Models::EphemeralBlob.first
-            expect(ephemeral_blob.blobstore_id).to eq(expected_blobstore_id)
-            expect(ephemeral_blob.sha1).to eq('expected-sha1')
+            exported_release_blob = Bosh::Director::Models::Blob.first
+            expect(exported_release_blob.blobstore_id).to eq(expected_blobstore_id)
+            expect(exported_release_blob.sha1).to eq('expected-sha1')
+            expect(exported_release_blob.type).to eq('exported-release')
           end
         end
       end

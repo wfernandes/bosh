@@ -18,6 +18,7 @@ module Bosh::Director
       allow(Config).to receive(:root_domain).and_return(domain_name)
       allow(Config).to receive(:local_dns_include_index?).and_return(false)
       allow(agent_broadcaster).to receive(:sync_dns)
+      allow(agent_broadcaster).to receive(:filter_instances)
     end
 
     describe 'publish and broadcast' do
@@ -82,18 +83,6 @@ module Bosh::Director
           allow(blobstore).to receive(:create).and_return('blob_id_1')
         end
 
-        it 'cleans up previous blobs each time a new one is published' do
-          expect {
-            dns.publish_and_broadcast
-          }.to change{ Models::EphemeralBlob.count }.by(1)
-
-          expect(Models::LocalDnsBlob.all).to_not include(original_local_dns_blob)
-
-          ephemeral_blob = Models::EphemeralBlob.last
-          expect(ephemeral_blob.blobstore_id).to eq(original_local_dns_blob.blobstore_id)
-          expect(ephemeral_blob.sha1).to eq(original_local_dns_blob.sha1)
-        end
-
         it 'puts a blob containing the records into the blobstore' do
           expected_records = JSON.dump({
               'records' => [
@@ -115,13 +104,13 @@ module Bosh::Director
         it 'creates a model representing the blob' do
           dns.publish_and_broadcast
           local_dns_blob = Bosh::Director::Models::LocalDnsBlob.last
-          expect(local_dns_blob.blobstore_id).to eq('blob_id_1')
-          expect(local_dns_blob.sha1).to eq('935e223937b3114dcb4fd6b43c28592cf6f181d2')
+          expect(local_dns_blob.blob.blobstore_id).to eq('blob_id_1')
           expect(local_dns_blob.version).to eq(4)
         end
 
         it 'broadcasts the blob to the agents' do
-          expect(agent_broadcaster).to receive(:sync_dns).with('blob_id_1', '935e223937b3114dcb4fd6b43c28592cf6f181d2', 4)
+          expect(agent_broadcaster).to receive(:filter_instances).with(nil).and_return([])
+          expect(agent_broadcaster).to receive(:sync_dns).with([], 'blob_id_1', '935e223937b3114dcb4fd6b43c28592cf6f181d2', 4)
           dns.publish_and_broadcast
         end
 
@@ -226,6 +215,5 @@ module Bosh::Director
         end
       end
     end
-
   end
 end

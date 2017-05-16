@@ -111,16 +111,17 @@ module Bosh::Director
             context 'when provided a cloud config and runtime config context to work within' do
               it 'should use the provided context instead of using the latest runtime and cloud config' do
                 cloud_config = Models::CloudConfig.make
-                runtime_config = Models::RuntimeConfig.make
+                runtime_config_1 = Models::RuntimeConfig.make
+                runtime_config_2 = Models::RuntimeConfig.make
 
                 Models::CloudConfig.make
                 Models::RuntimeConfig.make
 
-                deployment_context = [['context', JSON.dump({'cloud_config_id' => 1, 'runtime_config_id' => 1})]]
+                deployment_context = [['context', JSON.dump({'cloud_config_id' => 1, 'runtime_config_ids' => [runtime_config_1.id, runtime_config_2.id]})]]
 
                 allow_any_instance_of(DeploymentManager)
                   .to receive(:create_deployment)
-                  .with(anything, anything, cloud_config, runtime_config, anything, anything, anything)
+                  .with(anything, anything, cloud_config, [runtime_config_1, runtime_config_2], anything, anything, anything)
                   .and_return(Models::Task.make)
 
                 post "/?#{URI.encode_www_form(deployment_context)}", spec_asset('test_conf.yaml'), {'CONTENT_TYPE' => 'text/yaml'}
@@ -139,7 +140,7 @@ module Bosh::Director
                 expect_redirect_to_queued_task(last_response)
                 deployment = Models::Deployment.first
                 expect(deployment.cloud_config).to eq(cloud_config)
-                expect(deployment.runtime_config).to eq(runtime_config)
+                expect(deployment.runtime_configs).to contain_exactly(runtime_config)
               end
             end
 
@@ -1416,15 +1417,18 @@ module Bosh::Director
             )
           end
           let(:cloud_config) { Models::CloudConfig.make(raw_manifest: {'azs' => []}) }
-          let(:runtime_config) { Models::RuntimeConfig.make(raw_manifest: {'addons' => []}) }
+          let(:runtime_config_1) { Models::RuntimeConfig.make(id: 1, raw_manifest: {'addons' => []}) }
+          let(:runtime_config_2) { Models::RuntimeConfig.make(id: 2, raw_manifest: {'addons' => []}) }
+          let(:runtime_config_3) { Models::RuntimeConfig.make(id: 3, raw_manifest: {'addons' => []}, name: 'smurf') }
 
           before do
-            Models::Deployment.create(
+            deployment = Models::Deployment.create(
               :name => 'fake-dep-name',
               :manifest => YAML.dump({'jobs' => [], 'releases' => [{'name' => 'simple', 'version' => 5}]}),
-              cloud_config: cloud_config,
-              runtime_config: runtime_config
+              cloud_config: cloud_config
             )
+
+            deployment.runtime_configs = [runtime_config_1, runtime_config_2, runtime_config_3]
           end
 
           context 'authenticated access' do
@@ -1432,25 +1436,23 @@ module Bosh::Director
 
             it 'returns diff with resolved aliases' do
               perform
-              expect(last_response.body).to eq('{"context":{"cloud_config_id":1,"runtime_config_id":1},"diff":[["jobs: []","removed"],["",null],["name: fake-dep-name","added"]]}')
+              expect(last_response.body).to eq('{"context":{"cloud_config_id":1,"runtime_config_ids":[2,3]},"diff":[["jobs: []","removed"],["",null],["name: fake-dep-name","added"]]}')
             end
 
             it 'gives a nice error when request body is not a valid yml' do
               post '/fake-dep-name/diff', "}}}i'm not really yaml, hah!", {'CONTENT_TYPE' => 'text/yaml'}
 
-              expect(last_response.status).to eq(400)
-              expect(JSON.parse(last_response.body)['code']).to eq(440001)
-              expect(JSON.parse(last_response.body)['description']).to include('Incorrect YAML structure of the uploaded manifest: ')
+              expect(last_response.status).to eq(200)
+              expect(JSON.parse(last_response.body)['error']).to include('Unable to diff manifest: ')
+              expect(JSON.parse(last_response.body)['error']).to include('Incorrect YAML structure of the uploaded manifest: ' )
             end
 
             it 'gives a nice error when request body is empty' do
               post '/fake-dep-name/diff', '', {'CONTENT_TYPE' => 'text/yaml'}
 
-              expect(last_response.status).to eq(400)
-              expect(JSON.parse(last_response.body)).to eq(
-                'code' => 440001,
-                'description' => 'Manifest should not be empty',
-              )
+              expect(last_response.status).to eq(200)
+              expect(JSON.parse(last_response.body)['error']).to include('Unable to diff manifest: ')
+              expect(JSON.parse(last_response.body)['error']).to include('Manifest should not be empty' )
             end
 
             it 'returns 200 with an empty diff and an error message if the diffing fails' do
@@ -1471,8 +1473,7 @@ module Bosh::Director
                 Models::Deployment.create(
                   :name => 'fake-dep-name-no-cloud-conf',
                   :manifest => YAML.dump(manifest_hash),
-                  cloud_config: nil,
-                  runtime_config: runtime_config
+                  cloud_config: nil
                 )
 
                 Models::CloudConfig.make(raw_manifest: {'networks'=>[{'name'=>'very-cloudy-network'}]})
