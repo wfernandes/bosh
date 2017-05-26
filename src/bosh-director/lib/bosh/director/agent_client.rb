@@ -18,7 +18,7 @@ module Bosh::Director
     # which most likely will result in first get_task message being lost
     # because agent was not listening on NATS and second retry message
     # will probably be received because agent came back up.
-    GET_STATE_MAX_RETRIES = 2
+    GET_STATE_MAX_RETRIES = 20
 
     UPLOAD_BLOB_MAX_RETRIES = 3
 
