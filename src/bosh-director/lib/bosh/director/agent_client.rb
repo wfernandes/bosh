@@ -52,7 +52,6 @@ module Bosh::Director
       end
 
       @resource_manager = Api::ResourceManager.new
-      @event_log = Config.event_log
     end
 
     def method_missing(method_name, *args)
@@ -238,9 +237,7 @@ module Bosh::Director
       cond = result.new_cond
       timeout_time = Time.now.to_f + @timeout
 
-      @event_log.warn("NORTH POLE: send_nats_request for method #{method_name} for #{@client_id}")
       request_id = send_nats_request(method_name, args) do |response|
-        @event_log.warn("NORTH POLE: Got response for method #{method_name} for #{@client_id}")
         if @encryption_handler
           begin
             response = @encryption_handler.decrypt(response['encrypted_data'])
@@ -267,7 +264,6 @@ module Bosh::Director
             raise e
           end
           if timeout <= 0
-            @event_log.warn("NORTH POLE: Timeout for method #{method_name} for #{@client_id}")
             @nats_rpc.cancel_request(request_id)
             raise RpcTimeout,
               "Timed out sending '#{method_name}' to #{@client_id} " +
