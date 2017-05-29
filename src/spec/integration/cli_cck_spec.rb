@@ -15,7 +15,13 @@ describe 'cli: cloudcheck', type: :integration do
 
     before do
       manifest['jobs'][0]['persistent_disk'] = 100
-      deploy_from_scratch(manifest_hash: manifest)
+      puts '1================================'
+      puts deploy_from_scratch(manifest_hash: manifest)
+      puts '2================================'
+
+      puts '3================================'
+      puts runner.run('instances')
+      puts '4================================'
 
       expect(runner.run('cloudcheck --report')).to match(regexp('No problems found'))
     end
