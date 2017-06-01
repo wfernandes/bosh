@@ -353,6 +353,10 @@ module Bosh::Dev::Sandbox
         @database.truncate_db
       end
 
+      @nats_process.stop
+      @nats_process.start
+      @nats_socket_connector.try_to_connect
+
       FileUtils.rm_rf(blobstore_storage_dir)
       FileUtils.mkdir_p(blobstore_storage_dir)
 
