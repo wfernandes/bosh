@@ -1,4 +1,5 @@
 require 'bosh/director/agent_message_converter'
+require 'securerandom'
 
 module Bosh::Director
   class AgentClient
@@ -45,6 +46,7 @@ module Bosh::Director
       @timeout = options[:timeout] || 45
       @logger = Config.logger
       @retry_methods = options[:retry_methods] || {}
+      @event_log = Config.event_log
 
       if options[:credentials]
         @encryption_handler =
@@ -231,6 +233,12 @@ module Bosh::Director
     end
 
     def handle_method(method_name, args, &blk)
+      if (method_name == :get_state) || (method_name == :fetch_logs)
+        unique_message_id = SecureRandom.uuid
+        args << "unique_message_id #{unique_message_id}"
+        @event_log.warn("handle_method method_name: #{method_name}, args: #{args}, client_id: #{@client_id}, unique_message_id: #{unique_message_id}")
+      end
+
       result = {}
       result.extend(MonitorMixin)
 

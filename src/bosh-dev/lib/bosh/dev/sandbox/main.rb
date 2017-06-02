@@ -221,6 +221,10 @@ module Bosh::Dev::Sandbox
     end
 
     def stop
+      copy_dest_path = '/tmp/snoopy/' + SecureRandom.uuid
+      FileUtils.mkdir_p(copy_dest_path)
+      FileUtils.copy_entry(agent_tmp_path, copy_dest_path)
+
       @cpi.kill_agents
 
       @director_service.stop
@@ -343,6 +347,10 @@ module Bosh::Dev::Sandbox
 
     def do_reset
       @cpi.kill_agents
+
+      copy_dest_path = '/tmp/snoopy/' + SecureRandom.uuid
+      FileUtils.mkdir_p(copy_dest_path)
+      FileUtils.copy_entry(agent_tmp_path, copy_dest_path)
 
       @director_service.stop
 
