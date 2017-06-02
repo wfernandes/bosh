@@ -225,6 +225,10 @@ module Bosh::Dev::Sandbox
       FileUtils.mkdir_p(copy_dest_path)
       FileUtils.copy_entry(agent_tmp_path, copy_dest_path)
 
+      FileUtils.mkdir_p '/tmp/smurf/'
+      copy_nats_logs = '/tmp/smurf/' + SecureRandom.uuid
+      FileUtils.copy(@nats_log_path, copy_nats_logs)
+
       @cpi.kill_agents
 
       @director_service.stop
@@ -352,6 +356,11 @@ module Bosh::Dev::Sandbox
       FileUtils.mkdir_p(copy_dest_path)
       FileUtils.copy_entry(agent_tmp_path, copy_dest_path)
 
+      FileUtils.mkdir_p '/tmp/smurf/'
+      copy_nats_logs = '/tmp/smurf/' + SecureRandom.uuid
+      FileUtils.copy(@nats_log_path, copy_nats_logs)
+      FileUtils.rm(@nats_log_path)
+
       @director_service.stop
 
       if @drop_database
@@ -439,7 +448,7 @@ module Bosh::Dev::Sandbox
       conf = File.join(sandbox_root, NATS_CONFIG )
 
       @nats_process = Service.new(
-        %W[#{gnatsd_path} -c #{conf} -T -D ],
+        %W[#{gnatsd_path} -c #{conf} -T -DV ],
         {stdout: $stdout, stderr: $stderr},
         @logger
       )
