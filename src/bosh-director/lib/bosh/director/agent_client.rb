@@ -233,12 +233,6 @@ module Bosh::Director
     end
 
     def handle_method(method_name, args, &blk)
-      if (method_name == :get_state) || (method_name == :fetch_logs)
-        unique_message_id = SecureRandom.uuid
-        args << "unique_message_id #{unique_message_id}"
-        @event_log.warn("handle_method method_name: #{method_name}, args: #{args}, client_id: #{@client_id}, unique_message_id: #{unique_message_id}")
-      end
-
       result = {}
       result.extend(MonitorMixin)
 

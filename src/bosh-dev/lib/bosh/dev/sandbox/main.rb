@@ -358,8 +358,10 @@ module Bosh::Dev::Sandbox
 
       FileUtils.mkdir_p '/tmp/smurf/'
       copy_nats_logs = '/tmp/smurf/' + SecureRandom.uuid
-      FileUtils.copy(@nats_log_path, copy_nats_logs)
-      FileUtils.rm(@nats_log_path)
+      if File.exist?(@nats_log_path)
+        FileUtils.copy(@nats_log_path, copy_nats_logs)
+        FileUtils.rm(@nats_log_path)
+      end
 
       @director_service.stop
 
