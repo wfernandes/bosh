@@ -20,7 +20,7 @@ describe 'cli: cloudcheck', type: :integration do
       puts '2================================'
 
       puts '3================================'
-      puts runner.run('instances')
+      puts runner.run('instances --details --vitals')
       puts '4================================'
 
       expect(runner.run('cloudcheck --report')).to match(regexp('No problems found'))
