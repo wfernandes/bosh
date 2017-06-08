@@ -2,38 +2,48 @@
 
 set -e
 
-mount_btrfs() {
-  # Configure cgroup
-  mount -tcgroup -odevices cgroup:devices /sys/fs/cgroup
-  devices_mount_info=$(cat /proc/self/cgroup | grep devices)
-  devices_subdir=$(echo $devices_mount_info | cut -d: -f3)
-  echo 'b 7:* rwm' > /sys/fs/cgroup/devices.allow
-  echo 'b 7:* rwm' > /sys/fs/cgroup${devices_subdir}/devices.allow
+permit_device_control() {
+  local devices_mount_info=$(cat /proc/self/cgroup | grep devices)
 
-  set +e
-  # Setup loop devices
-  for i in {0..256}
-  do
-    mknod -m777 /dev/loop$i b 7 $i
-  done
-  set -e
+  if [ -z "$devices_mount_info" ]; then
+    # cgroups not set up; must not be in a container
+    return
+  fi
 
-  # Make BTRFS volume
-  truncate -s 8G /btrfs_volume
-  mkfs.btrfs /btrfs_volume
+  local devices_subsytems=$(echo $devices_mount_info | cut -d: -f2)
+  local devices_subdir=$(echo $devices_mount_info | cut -d: -f3)
 
-  # Mount BTRFS
-  mkdir /mnt/btrfs
-  mount -t btrfs -o user_subvol_rm_allowed,rw /btrfs_volume /mnt/btrfs
-  chmod 777 -R /mnt/btrfs
-  btrfs quota enable /mnt/btrfs
+  if [ "$devices_subdir" = "/" ]; then
+    # we're in the root devices cgroup; must not be in a container
+    return
+  fi
+
+  cgroup_dir=${RUN_DIR}/devices-cgroup
+
+  if [ ! -e ${cgroup_dir} ]; then
+    # mount our container's devices subsystem somewhere
+    mkdir ${cgroup_dir}
+  fi
+
+  if ! mountpoint -q ${cgroup_dir}; then
+    mount -t cgroup -o $devices_subsytems none ${cgroup_dir}
+  fi
+
+  # permit our cgroup to do everything with all devices
+  echo a > ${cgroup_dir}${devices_subdir}/devices.allow
+
+  umount ${cgroup_dir}
 }
 
-init_grootfs_storage() {
-  /opt/garden/bin/grootfs --config /opt/garden/grootfs-unprivileged.yml init-store \
-    --uid-mapping 0:4294967294:1 --uid-mapping 1:1:4294967293 \
-    --gid-mapping 0:4294967294:1 --gid-mapping 1:1:4294967293
-  /opt/garden/bin/grootfs --config /opt/garden/grootfs-privileged.yml init-store
+create_loop_devices() {
+  set +x
+  amt=${1:-256}
+  for i in $(seq 0 $amt); do
+    if ! mknod -m 0660 /dev/loop$i b 7 $i; then
+      break
+    fi
+  done
+  set -x
 }
 
 start_garden() {
@@ -44,39 +54,46 @@ start_garden() {
     mount -t sysfs sysfs /sys
   fi
 
-  mount_btrfs
-
-  init_grootfs_storage
+  # shellcheck source=/dev/null
+  permit_device_control
+  create_loop_devices 256
 
   local mtu=$(cat /sys/class/net/$(ip route get 8.8.8.8|awk '{ print $5 }')/mtu)
   local tmpdir=$(mktemp -d)
 
   local depot_path=$tmpdir/depot
+  local console_sockets_path=$tmpdir/console-sockets
 
   mkdir -p $depot_path
+  mkdir -p $console_sockets_path
 
   export TMPDIR=$tmpdir
   export TEMP=$tmpdir
   export TMP=$tmpdir
+
+  # GARDEN_GRAPH_PATH is the root of the docker image filesystem
+  export GARDEN_GRAPH_PATH=/tmp/garden/graph
+  mkdir -p "${GARDEN_GRAPH_PATH}"
+  truncate -s 4G /tmp/garden/graph-sparse
+  yes | mkfs -t ext4 /tmp/garden/graph-sparse
+  mount -t ext4 /tmp/garden/graph-sparse "${GARDEN_GRAPH_PATH}"
+
+  # we need a non-layered filesystem to be able to nest garden
+  mkdir -p /var/vcap
+  truncate -s 12G /tmp/garden/var-vcap
+  yes | mkfs -t ext4 /tmp/garden/var-vcap
+  mount -t ext4 /tmp/garden/var-vcap /var/vcap
 
   /opt/garden/bin/gdn server \
     --allow-host-access \
     --depot $depot_path \
     --bind-ip 0.0.0.0 --bind-port 7777 \
     --mtu $mtu \
-    --image-plugin /opt/garden/bin/grootfs \
-    --image-plugin-extra-arg='--config' \
-    --image-plugin-extra-arg='/opt/garden/grootfs-unprivileged.yml' \
-    --privileged-image-plugin=/opt/garden/bin/grootfs \
-    --privileged-image-plugin-extra-arg='--config' \
-    --privileged-image-plugin-extra-arg='/opt/garden/grootfs-privileged.yml' \
+    --graph=$GARDEN_GRAPH_PATH \
     &
-
-    curl -o /usr/local/bin/gaol -L https://github.com/contraband/gaol/releases/download/2016-8-22/gaol_linux
-    chmod +x /usr/local/bin/gaol
 }
 
-function main() {
+main() {
   source /etc/profile.d/chruby.sh
   chruby 2.3.1
 
@@ -91,8 +108,6 @@ function main() {
   local local_bosh_dir
   local_bosh_dir="/tmp/local-bosh/director"
 
-  # docker network create -d bridge --subnet=10.245.0.0/16 director_network
-
   pushd /usr/local/bosh-deployment > /dev/null
       export BOSH_DIRECTOR_IP="10.245.0.3"
       export BOSH_ENVIRONMENT="warden-director"
@@ -100,10 +115,10 @@ function main() {
       mkdir -p ${local_bosh_dir}
 
       command bosh int bosh.yml \
-        -o warden/cpi.yml \
         -o jumpbox-user.yml \
         -o bosh-lite.yml \
         -o bosh-lite-runc.yml \
+        -o warden/cpi.yml \
         -v director_name=warden \
         -v internal_cidr=10.245.0.0/16 \
         -v internal_gw=10.245.0.1 \
@@ -129,6 +144,8 @@ EOF
       source "${local_bosh_dir}/env"
 
       bosh -n update-cloud-config warden/cloud-config.yml
+
+      route add -net 10.244.0.0/16 gw ${BOSH_DIRECTOR_IP}
 
   popd > /dev/null
 }

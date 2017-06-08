@@ -1,7 +1,0 @@
-store: /mnt/btrfs/privileged
-driver: btrfs
-btrfs_bin: /sbin/btrfs
-drax_bin: /opt/garden/bin/drax
-newuidmap_bin: /usr/bin/newuidmap
-newgidmap_bin: /usr/bin/newgidmap
-log_level: debug

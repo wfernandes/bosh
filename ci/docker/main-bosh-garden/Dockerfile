@@ -29,9 +29,6 @@ ADD ./install-garden.sh /tmp/install-garden.sh
 RUN /tmp/install-garden.sh
 RUN rm /tmp/install-garden.sh
 
-COPY grootfs-unprivileged.yml /opt/garden
-COPY grootfs-privileged.yml /opt/garden
-
 COPY bosh /usr/local/bin/
 RUN chmod +x /usr/local/bin/bosh
 
