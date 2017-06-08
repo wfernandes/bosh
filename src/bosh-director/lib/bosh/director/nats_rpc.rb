@@ -41,8 +41,15 @@ module Bosh::Director
       @logger.debug("SENT: #{client} #{message}")
 
       EM.schedule do
-        subscribe_inbox
-        nats.publish(client, message)
+        was_unsubscribed = @subject_id.nil?
+        if was_unsubscribed
+          subscribe_inbox
+          nats.flush do
+            nats.publish(client, message)
+          end
+        else
+          nats.publish(client, message)
+        end
       end
       request_id
     end
