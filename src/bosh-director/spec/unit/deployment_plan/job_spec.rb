@@ -14,11 +14,30 @@ module Bosh
 
           context 'given properly formated arguments' do
             before {
-              job.add_link_from_release('job_name', 'provides', 'link_name', {'from' => 'link_name'})
-              job.add_link_from_manifest('job_name', 'provides', 'link_name', {'properties'=>['plant'], 'from'=>'link_name'})
+              job.add_link_from_release('instance_group_name', 'provides', 'link_name', {'from' => 'link_name'})
+              job.add_link_from_manifest('instance_group_name', 'provides', 'link_name', {'properties'=>['plant'], 'from'=>'link_name'})
+              job.add_link_from_manifest('instance_group_name', 'consumes', 'consumed_link_name', {'from'=>'provider_link_name', 'ip_addresses' => true})
             }
+
             it 'should populate link_infos' do
-              expect(job.link_infos).to eq({'job_name' =>{'provides' =>{'link_name' =>{'properties' =>['plant'], 'from' => 'link_name'}}}})
+              expected_link_infos = {
+                'instance_group_name' => {
+                  'provides' => {
+                    'link_name' => {
+                      'properties' =>['plant'],
+                      'from' => 'link_name'
+                    }
+                  },
+                  'consumes' => {
+                    'consumed_link_name' => {
+                      'from' => 'provider_link_name',
+                      'ip_addresses' => true
+                    }
+                  }
+                }
+              }
+
+              expect(job.link_infos).to eq(expected_link_infos)
             end
           end
 
