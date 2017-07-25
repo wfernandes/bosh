@@ -107,8 +107,10 @@ module Bosh::Director
         client = nats
         @lock.synchronize do
           if @subject_id.nil?
-            @subject_id = client.subscribe("#{@inbox_name}.>") do |message, _, subject|
-              handle_response(message, subject)
+            client.flush do
+              @subject_id = client.subscribe("#{@inbox_name}.>") do |message, _, subject|
+                handle_response(message, subject)
+              end
             end
           end
         end
