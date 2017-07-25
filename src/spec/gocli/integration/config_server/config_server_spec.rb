@@ -29,7 +29,14 @@ describe 'using director with config server', type: :integration do
       }
     }
   end
-
+  let(:expected_blobstore_config) {
+    {
+      "provider" =>"local",
+      "options" =>{
+        "blobstore_path" => current_sandbox.blobstore_storage_dir
+      }
+    }
+  }
   def upload_links_release
     FileUtils.cp_r(LINKS_RELEASE_TEMPLATE, ClientSandbox.links_release_dir, :preserve => true)
     bosh_runner.run_in_dir('create-release --force', ClientSandbox.links_release_dir, include_credentials: false,  env: client_env)
@@ -363,6 +370,7 @@ Error: Unable to render instance groups for deployment. Errors are:
                 },
                 'bosh' => {
                   'mbus' => Hash,
+                  'blobstores' => [expected_blobstore_config],
                   'group' => 'testdirector-simple-foobar',
                   'groups' =>['testdirector', 'simple', 'foobar', 'testdirector-simple', 'simple-foobar', 'testdirector-simple-foobar']
                 },
@@ -436,6 +444,7 @@ Error: Unable to render instance groups for deployment. Errors are:
                 },
                 'bosh' => {
                   'mbus' => Hash,
+                  'blobstores' => [expected_blobstore_config],
                   'group' => 'testdirector-simple-foobar',
                   'password' => 'foobar',
                   'groups' =>['testdirector', 'simple', 'foobar', 'testdirector-simple', 'simple-foobar', 'testdirector-simple-foobar']
@@ -518,6 +527,7 @@ Error: Unable to render instance groups for deployment. Errors are:
                                                           },
                                                           'bosh' => {
                                                             'mbus' => Hash,
+                                                            'blobstores' => [expected_blobstore_config],
                                                             'password' => 'foobar',
                                                             'remove_dev_tools' => true,
                                                             'group' => 'testdirector-simple-foobar',
@@ -884,7 +894,11 @@ Error: Unable to render instance groups for deployment. Errors are:
       end
     end
 
+    # Q. Why is this context commented?
+    # A. variable generation based on release spec has been disabled since default CA was removed from config-server.
+    # Ref: Tracker stories #138578557 and #139470935
     xcontext 'when release job spec properties have types' do
+
       let(:manifest_hash) do
         Bosh::Spec::Deployments.test_release_manifest.merge(
           {

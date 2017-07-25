@@ -256,6 +256,7 @@ module Bosh::Director
   AgentDiskOutOfSync = err(400010)
   AgentInvalidTaskResult = err(400011)
   AgentUnsupportedAction = err(400012)
+  AgentUploadBlobUnableToOpenFile = err(400013)
 
   # Cloud check task errors
   CloudcheckTooManySimilarProblems = err(410001)
@@ -321,4 +322,7 @@ module Bosh::Director
 
   # Invalid YAML
   InvalidYamlError = err(710000)
+
+  # Resolving Links
+  LinkLookupError = err(810000)
 end

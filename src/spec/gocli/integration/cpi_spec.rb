@@ -14,7 +14,7 @@ describe 'CPI calls', type: :integration do
     let(:expected_group) { 'testdirector-simple-first-job' }
     let(:expected_mbus) {
       {
-        'url' => /nats:\/\/127\.0\.0\.1:\d+/,
+        'urls' => [ /nats:\/\/127\.0\.0\.1:\d+/ ],
         'ca' => '-----BEGIN CERTIFICATE-----
 MIICsjCCAhugAwIBAgIJAJgyGeIL1aiPMA0GCSqGSIb3DQEBBQUAMEUxCzAJBgNV
 BAYTAkFVMRMwEQYDVQQIEwpTb21lLVN0YXRlMSEwHwYDVQQKExhJbnRlcm5ldCBX
@@ -33,6 +33,14 @@ HCu8gfq+3WRUgddCQnYJUXtig2yAqmHf/WGR9yYYnfMUDKa85i0inolq1EnLvgVV
 K4iijxtW0XYe5R1Od6lWOEKZ6un9Ag==
 -----END CERTIFICATE-----
 '
+      }
+    }
+    let(:expected_blobstore_config) {
+      {
+        "provider" =>"local",
+        "options" =>{
+          "blobstore_path" => current_sandbox.blobstore_storage_dir
+        }
       }
     }
 
@@ -71,6 +79,7 @@ K4iijxtW0XYe5R1Od6lWOEKZ6un9Ag==
         'env' => {
           'bosh' => {
             'mbus' => expected_mbus,
+            'blobstores' => [expected_blobstore_config],
             'group' => String,
             'groups' => Array
           }
@@ -131,6 +140,7 @@ K4iijxtW0XYe5R1Od6lWOEKZ6un9Ag==
         'env' => {
           'bosh' => {
             'mbus' => expected_mbus,
+            'blobstores' => [expected_blobstore_config],
             'group' => String,
             'groups' => Array,
           }
@@ -192,6 +202,7 @@ K4iijxtW0XYe5R1Od6lWOEKZ6un9Ag==
         'env' => {
           'bosh' =>{
             'mbus' => expected_mbus,
+            'blobstores' => [expected_blobstore_config],
             'password' => 'foobar',
             'group' => 'testdirector-simple-foobar',
             'groups' => ['testdirector', 'simple', 'foobar', 'testdirector-simple', 'simple-foobar', 'testdirector-simple-foobar']
@@ -268,6 +279,7 @@ K4iijxtW0XYe5R1Od6lWOEKZ6un9Ag==
             'bosh' => {
               'password' => 'foobar',
               'mbus' => expected_mbus,
+              'blobstores' => [expected_blobstore_config],
               'group' => expected_group,
               'groups' => expected_groups,
             }
@@ -380,6 +392,7 @@ K4iijxtW0XYe5R1Od6lWOEKZ6un9Ag==
           'env' => {
             'bosh' =>{
               'mbus' => expected_mbus,
+              'blobstores' => [expected_blobstore_config],
               'password' => 'foobar',
               'group' => expected_group,
               'groups' => expected_groups

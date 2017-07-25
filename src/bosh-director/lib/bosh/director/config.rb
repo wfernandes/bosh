@@ -42,7 +42,8 @@ module Bosh::Director
         :enable_virtual_delete_vms,
         :local_dns,
         :verify_multidigest_path,
-        :version
+        :version,
+        :enable_cpi_resize_disk
       )
 
       attr_reader(
@@ -129,6 +130,9 @@ module Bosh::Director
 
         @compiled_package_cache = nil
 
+        @blobstore_config = config['blobstore']
+        @backup_blobstore_config = config['backup_destination']
+
         @db_config = config['db']
         @db = configure_db(config['db'])
         @dns = config['dns']
@@ -194,6 +198,7 @@ module Bosh::Director
           raise ArgumentError, 'Multiple Digest binary must be specified'
         end
         @verify_multidigest_path = config['verify_multidigest_path']
+        @enable_cpi_resize_disk = config.fetch('enable_cpi_resize_disk', false)
       end
 
       def log_director_start
@@ -362,6 +367,14 @@ module Bosh::Director
         temp_dir
       end
 
+      def blobstore_config
+        @blobstore_config
+      end
+
+      def backup_blobstore_config
+        @backup_blobstore_config
+      end
+
       def load_file(path)
         Config.new(YAML.load_file(path))
       end
@@ -431,14 +444,6 @@ module Bosh::Director
 
     def db
       Config.configure_db(hash['db'])
-    end
-
-    def blobstore_config
-      hash.fetch('blobstore')
-    end
-
-    def backup_blobstore_config
-      hash['backup_destination']
     end
 
     def log_access_events_to_syslog

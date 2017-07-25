@@ -439,4 +439,71 @@ describe Bosh::Director::Config do
       expect(event.context).to eq({'version' => '0.0.2'})
     end
   end
+
+  describe 'enable_cpi_resize_disk' do
+    it 'defaults to false' do
+      described_class.configure(test_config)
+      expect(described_class.enable_cpi_resize_disk).to be_falsey
+    end
+
+    context 'when explicitly set' do
+      context 'when set to true' do
+        before { test_config['enable_cpi_resize_disk'] = true }
+
+        it 'resolves to true' do
+          described_class.configure(test_config)
+          expect(described_class.enable_cpi_resize_disk).to be_truthy
+        end
+      end
+
+      context 'when set to false' do
+        before { test_config['enable_cpi_resize_disk'] = false }
+
+        it 'resolves to false' do
+          described_class.configure(test_config)
+          expect(described_class.enable_cpi_resize_disk).to be_falsey
+        end
+      end
+    end
+  end
+
+  describe '#blobstore_config' do
+    before do
+      described_class.configure(test_config)
+    end
+    let(:expected_blobstore_config) do
+      {
+        'provider' => 'davcli',
+        'options' => {
+          'endpoint' => 'http://127.0.0.1',
+          'user' => 'admin',
+          'password' => nil,
+          'davcli_path' => true
+        }
+      }
+    end
+    it 'returns blobstore correct config info' do
+      expect(described_class.blobstore_config).to eq(expected_blobstore_config)
+    end
+  end
+
+  describe '#backup_blobstore_config' do
+    before do
+      described_class.configure(test_config)
+    end
+    let(:expected_backup_blobstore_config) do
+      {
+        'provider' => 's3cli',
+        'options' => {
+          'bucket_name' => 'foo',
+          'access_key_id' => 'asdf',
+          'secret_access_key' => 'zxcv',
+          's3cli_path' => true
+        }
+      }
+    end
+    it 'returns backup blobstore correct config info' do
+      expect(described_class.backup_blobstore_config).to eq(expected_backup_blobstore_config)
+    end
+  end
 end

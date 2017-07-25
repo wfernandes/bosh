@@ -109,9 +109,6 @@ module Bosh::Director
               allow(job_renderer).to receive(:render_job_instances)
               allow(instance_plan1).to receive(:instance).and_return(instance1)
               allow(instance_plan2).to receive(:instance).and_return(instance2)
-
-              allow(instance1).to receive(:variable_set=)
-              allow(instance2).to receive(:variable_set=)
             end
 
             it 'should create a new variable set for the deployment and mark variable sets' do
@@ -132,8 +129,18 @@ module Bosh::Director
               job.perform
             end
 
-            it 'updates unignored instance plan with current variable set' do
-              expect(deployment_instance_group).to receive(:assign_variable_set).with(variable_set)
+            it 'does not fail if cleaning up old VariableSets raises an error' do
+              another_variable_set =  Bosh::Director::Models::VariableSet.make(deployment: deployment_model)
+              allow(deployment_instance_group).to receive(:referenced_variable_sets).and_return([variable_set, another_variable_set])
+              allow(deployment_model).to receive(:cleanup_variable_sets).with([variable_set, another_variable_set]).and_raise(Sequel::ForeignKeyConstraintViolation.new('bad stuff happened'))
+
+              expect {
+                job.perform
+              }.to_not raise_error
+            end
+
+            it 'should bind the models with correct options in the assembler' do
+              expect(assembler).to receive(:bind_models).with({:should_bind_new_variable_set => true})
 
               job.perform
             end
@@ -143,9 +150,18 @@ module Bosh::Director
             let (:options) { {'deploy' => false} }
             let(:manifest) { instance_double( Bosh::Director::Manifest)}
 
-            it 'should NOT mark new variable set or remove unused variable sets' do
+            before do
               allow(Bosh::Director::Manifest).to receive(:load_from_hash).and_return(manifest)
               expect(Models::Deployment).to_not receive(:find).with({name: 'deployment-name'})
+            end
+
+            it 'should bind the models with correct options in the assembler' do
+              expect(assembler).to receive(:bind_models).with({:should_bind_new_variable_set => false})
+
+              job.perform
+            end
+
+            it 'should NOT mark new variable set or remove unused variable sets' do
               expect(variable_set).to_not receive(:update).with(:deployed_successfully => true)
 
               job.perform
