@@ -222,12 +222,12 @@ module Bosh::Dev::Sandbox
     end
 
     def stop
-      copy_dest_path = '/tmp/snoopy/' + SecureRandom.uuid
+      copy_dest_path = '/tmp/agent-logs/' + SecureRandom.uuid
       FileUtils.mkdir_p(copy_dest_path)
       FileUtils.copy_entry(agent_tmp_path, copy_dest_path)
 
-      FileUtils.mkdir_p '/tmp/smurf/'
-      copy_nats_logs = '/tmp/smurf/' + SecureRandom.uuid
+      FileUtils.mkdir_p '/tmp/nats-logs/'
+      copy_nats_logs = '/tmp/nats-logs/' + SecureRandom.uuid
       FileUtils.copy(@nats_log_path, copy_nats_logs)
 
       @cpi.kill_agents

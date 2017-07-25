@@ -45,13 +45,11 @@ module Bosh::Director
       EM.schedule do
         was_unsubscribed = @subject_id.nil?
         if was_unsubscribed
-          subscribe_inbox
           nats.flush do
-            nats.publish(client, message)
+            subscribe_inbox
           end
-        else
-          nats.publish(client, message)
         end
+        nats.publish(client, message)
       end
       request_id
     end
@@ -109,10 +107,8 @@ module Bosh::Director
         client = nats
         @lock.synchronize do
           if @subject_id.nil?
-            client.flush do
-              @subject_id = client.subscribe("#{@inbox_name}.>") do |message, _, subject|
-                handle_response(message, subject)
-              end
+            @subject_id = client.subscribe("#{@inbox_name}.>") do |message, _, subject|
+              handle_response(message, subject)
             end
           end
         end
