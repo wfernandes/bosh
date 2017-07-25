@@ -49,7 +49,7 @@ module Bosh::Director
             subscribe_inbox
           end
         end
-        nats.publish(client, message)
+        nats.publish(client, request_body)
       end
       request_id
     end
@@ -77,19 +77,21 @@ module Bosh::Director
             # end
 
             NATS.on_disconnect do |reason|
-              @logger.error("XXX NATS client disconnected. inbox_name: #{@inbox_name}. subject_id: #{@subject_id}. reason: #{reason}")
+              @logger.error("XXX NATS client disconnected. @nats: #{@nats}. inbox_name: #{@inbox_name}. subject_id: #{@subject_id}. reason: #{reason}")
+              @subject_id = nil
+              @nats = nil
             end
 
             NATS.on_close do
-              @logger.error("XXX NATS client closed. inbox_name: #{@inbox_name}. subject_id: #{@subject_id}")
+              @logger.error("XXX NATS client closed. @nats: #{@nats}. inbox_name: #{@inbox_name}. subject_id: #{@subject_id}")
             end
 
             NATS.on_error do |e|
-              @logger.error("XXX NATS client errored. inbox_name: #{@inbox_name}. subject_id: #{@subject_id} error: #{e}")
+              @logger.error("XXX NATS client errored. @nats: #{@nats}. inbox_name: #{@inbox_name}. subject_id: #{@subject_id} error: #{e}")
             end
 
             NATS.on_reconnect do |nats|
-              @logger.error("XXX NATS client reconnected. inbox_name: #{@inbox_name}. subject_id: #{@subject_id}. nats: #{nats}")
+              @logger.error("XXX NATS client reconnected. @nats: #{@nats}. inbox_name: #{@inbox_name}. subject_id: #{@subject_id}. nats: #{nats}")
             end
 
             @nats = NATS.connect(uri: @nats_uri, ssl: true, tls: {ca_file: @nats_server_ca_path} )
