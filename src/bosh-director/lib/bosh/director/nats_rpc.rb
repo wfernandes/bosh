@@ -61,6 +61,8 @@ module Bosh::Director
 
     def connect
       # double-check locking to reduce synchronization
+      resubscribe = false
+
       if @nats.nil?
         @lock.synchronize do
           if @nats.nil?
@@ -88,10 +90,13 @@ module Bosh::Director
 
             @nats = NATS.connect(uri: @nats_uri, ssl: true, tls: {ca_file: @nats_server_ca_path} )
             @subject_id = nil
-            EM.schedule do
-              subscribe_inbox
-            end
+            resubscribe = true
           end
+        end
+      end
+      if resubscribe
+        EM.schedule do
+          subscribe_inbox
         end
       end
       @nats
