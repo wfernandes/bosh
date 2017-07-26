@@ -78,8 +78,6 @@ module Bosh::Director
 
             NATS.on_disconnect do |reason|
               @logger.error("XXX NATS client disconnected. @nats: #{@nats}. inbox_name: #{@inbox_name}. subject_id: #{@subject_id}. reason: #{reason}")
-              @subject_id = nil
-              @nats = nil
             end
 
             NATS.on_close do
@@ -95,6 +93,8 @@ module Bosh::Director
             end
 
             @nats = NATS.connect(uri: @nats_uri, ssl: true, tls: {ca_file: @nats_server_ca_path} )
+            @subject_id = nil
+            subscribe_inbox
           end
         end
       end
