@@ -43,12 +43,6 @@ module Bosh::Director
 
       @logger.debug("SENT: #{client} #{sanitized_log_message}")
       EM.schedule do
-        was_unsubscribed = @subject_id.nil?
-        if was_unsubscribed
-          nats.flush do
-            subscribe_inbox
-          end
-        end
         nats.publish(client, request_body)
       end
       request_id
@@ -94,7 +88,9 @@ module Bosh::Director
 
             @nats = NATS.connect(uri: @nats_uri, ssl: true, tls: {ca_file: @nats_server_ca_path} )
             @subject_id = nil
-            subscribe_inbox
+            EM.schedule do
+              subscribe_inbox
+            end
           end
         end
       end
