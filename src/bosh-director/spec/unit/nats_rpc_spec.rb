@@ -15,6 +15,7 @@ describe Bosh::Director::NatsRpc do
     allow(Bosh::Director::Config).to receive(:process_uuid).and_return(123)
     allow(EM).to receive(:schedule).and_yield
     allow(nats_rpc).to receive(:generate_request_id).and_return('req1')
+    allow(nats).to receive(:subscribe)
   end
 
   describe '#nats' do

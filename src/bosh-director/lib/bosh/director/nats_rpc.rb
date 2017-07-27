@@ -64,35 +64,27 @@ module Bosh::Director
       resubscribe = false
 
       if @nats.nil?
-        @lock.synchronize do
-          if @nats.nil?
-            # NATS.on_error do |e|
-            #   password = @nats_uri[/nats:\/\/.*:(.*)@/, 1]
-            #   redacted_message = password.nil? ? "NATS client error: #{e}" : "NATS client error: #{e}".gsub(password, '*******')
-            #   @logger.error(redacted_message)
-            # end
-
-            NATS.on_disconnect do |reason|
-              @logger.error("XXX NATS client disconnected. @nats: #{@nats}. inbox_name: #{@inbox_name}. subject_id: #{@subject_id}. reason: #{reason}")
-            end
-
-            NATS.on_close do
-              @logger.error("XXX NATS client closed. @nats: #{@nats}. inbox_name: #{@inbox_name}. subject_id: #{@subject_id}")
-            end
-
-            NATS.on_error do |e|
-              @logger.error("XXX NATS client errored. @nats: #{@nats}. inbox_name: #{@inbox_name}. subject_id: #{@subject_id} error: #{e}")
-            end
-
-            NATS.on_reconnect do |nats|
-              @logger.error("XXX NATS client reconnected. @nats: #{@nats}. inbox_name: #{@inbox_name}. subject_id: #{@subject_id}. nats: #{nats}")
-            end
-
-            @nats = NATS.connect(uri: @nats_uri, ssl: true, tls: {ca_file: @nats_server_ca_path} )
-            @subject_id = nil
-            resubscribe = true
-          end
+        NATS.on_error do |e|
+          password = @nats_uri[/nats:\/\/.*:(.*)@/, 1]
+          redacted_message = password.nil? ? "NATS client error: #{e}" : "NATS client error: #{e}".gsub(password, '*******')
+          @logger.error(redacted_message)
         end
+
+        NATS.on_disconnect do |reason|
+          @logger.error("NATS client disconnected. @nats: #{@nats}. inbox_name: #{@inbox_name}. subject_id: #{@subject_id}. reason: #{reason}")
+        end
+
+        NATS.on_close do
+          @logger.error("NATS client closed. @nats: #{@nats}. inbox_name: #{@inbox_name}. subject_id: #{@subject_id}")
+        end
+
+        NATS.on_reconnect do |nats|
+          @logger.error("NATS client reconnected. @nats: #{@nats}. inbox_name: #{@inbox_name}. subject_id: #{@subject_id}. nats: #{nats}")
+        end
+
+        @nats = NATS.connect(uri: @nats_uri, ssl: true, tls: {ca_file: @nats_server_ca_path} )
+        @subject_id = nil
+        resubscribe = true
       end
       if resubscribe
         EM.schedule do
@@ -108,12 +100,8 @@ module Bosh::Director
       if @subject_id.nil?
         # nats lazy-load needs to be outside the synchronized block
         client = nats
-        @lock.synchronize do
-          if @subject_id.nil?
-            @subject_id = client.subscribe("#{@inbox_name}.>") do |message, _, subject|
-              handle_response(message, subject)
-            end
-          end
+        @subject_id = client.subscribe("#{@inbox_name}.>") do |message, _, subject|
+          handle_response(message, subject)
         end
       end
     end
