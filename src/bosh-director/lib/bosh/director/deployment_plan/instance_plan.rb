@@ -4,13 +4,14 @@ module Bosh
   module Director
     module DeploymentPlan
       class InstancePlan
-        def initialize(existing_instance:, desired_instance:, instance:, network_plans: [], skip_drain: false, recreate_deployment: false, logger: Config.logger, tags: {})
+        def initialize(existing_instance:, desired_instance:, instance:, network_plans: [], skip_drain: false, recreate_deployment: false, use_dns_addresses: false, logger: Config.logger, tags: {})
           @existing_instance = existing_instance
           @desired_instance = desired_instance
           @instance = instance
           @network_plans = network_plans
           @skip_drain = skip_drain
           @recreate_deployment = recreate_deployment
+          @use_dns_addresses = use_dns_addresses
           @logger = logger
           @tags = tags
           @powerdns_manager = PowerDnsManagerProvider.create
@@ -179,7 +180,11 @@ module Bosh
           network_plans.select(&:desired?).each { |network_plan| network_plan.existing = true }
         end
 
-        def release_obsolete_network_plans
+        def release_obsolete_network_plans(ip_provider)
+          network_plans.select(&:obsolete?).each do |network_plan|
+            reservation = network_plan.reservation
+            ip_provider.release(reservation)
+          end
           network_plans.delete_if(&:obsolete?)
         end
 
@@ -213,7 +218,7 @@ module Bosh
             @instance.availability_zone,
             @instance.index,
             @instance.uuid,
-            @powerdns_manager.root_domain,
+            root_domain,
           )
         end
 
@@ -222,13 +227,17 @@ module Bosh
         end
 
         def network_address
-          network_settings.network_address
+          network_settings.network_address(@use_dns_addresses)
         end
 
         # @param [Boolean] prefer_dns_entry Flag for using DNS entry when available.
         # @return [Hash] A hash mapping network names to their associated address
         def network_addresses(prefer_dns_entry)
           network_settings.network_addresses(prefer_dns_entry)
+        end
+
+        def root_domain
+          @powerdns_manager.root_domain
         end
 
         def needs_shutting_down?

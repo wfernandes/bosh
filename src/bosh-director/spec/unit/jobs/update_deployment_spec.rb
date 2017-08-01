@@ -18,18 +18,24 @@ module Bosh::Director
         ig.name = 'some-errand-instance-group'
         ig
       end
+      let(:availability_zones) { [zone_1, zone_2] }
+      let(:zone_1) { DeploymentPlan::AvailabilityZone.new('zone_1', {}) }
+      let(:zone_2) { DeploymentPlan::AvailabilityZone.new('zone_2', {}) }
+      let(:logger) { instance_double(Logging::Logger) }
+      let(:dns_encoder) { instance_double(DnsEncoder) }
 
       before do
         App.new(config)
         allow(job).to receive(:task_id).and_return(task.id)
         allow(Time).to receive_messages(now: Time.parse('2016-02-15T09:55:40Z'))
+        allow(LocalDnsEncoderManager).to receive(:new_encoder_with_updated_index).with(['zone_1', 'zone_2']).and_return(dns_encoder)
       end
 
       describe '#perform' do
         let(:compile_step) { instance_double(DeploymentPlan::Steps::PackageCompileStep) }
         let(:update_step) { instance_double(DeploymentPlan::Steps::UpdateStep) }
         let(:notifier) { instance_double(DeploymentPlan::Notifier) }
-        let(:job_renderer) { JobRenderer.create }
+        let(:template_blob_cache) { instance_double(Bosh::Director::Core::Templates::TemplateBlobCache) }
         let(:variables_interpolator) { instance_double(ConfigServer::VariablesInterpolator) }
         let(:planner_factory) do
           instance_double(
@@ -45,7 +51,8 @@ module Bosh::Director
             instance_groups: [deployment_instance_group],
             instance_groups_starting_on_deploy: [deployment_instance_group],
             errand_instance_groups: [errand_instance_group],
-            job_renderer: job_renderer,
+            template_blob_cache: template_blob_cache,
+            availability_zones: availability_zones,
             model: deployment_model
           )
         end
@@ -58,11 +65,9 @@ module Bosh::Director
 
         before do
           allow(job).to receive(:with_deployment_lock).and_yield.ordered
-          allow(job).to receive(:current_variable_set).and_return(variable_set)
           allow(DeploymentPlan::Steps::PackageCompileStep).to receive(:create).with(planner).and_return(compile_step)
           allow(DeploymentPlan::Steps::UpdateStep).to receive(:new).and_return(update_step)
           allow(DeploymentPlan::Notifier).to receive(:new).and_return(notifier)
-          allow(JobRenderer).to receive(:create).and_return(job_renderer)
           allow(ConfigServer::VariablesInterpolator).to receive(:new).and_return(variables_interpolator)
           allow(DeploymentPlan::PlannerFactory).to receive(:new).and_return(planner_factory)
           allow(planner).to receive(:variables).and_return(DeploymentPlan::Variables.new([]))
@@ -70,8 +75,15 @@ module Bosh::Director
           allow(variables_interpolator).to receive(:interpolate_link_spec_properties) { |links_spec| links_spec }
           allow(variables_interpolator).to receive(:interpolate_deployment_manifest) { |manifest| manifest }
           allow(deployment_model).to receive(:current_variable_set).and_return(variable_set)
+          allow(template_blob_cache).to receive(:clean_cache!)
           allow(DeploymentPlan::Assembler).to receive(:create).and_return(assembler)
           allow(Bosh::Director::Models::RuntimeConfig).to receive(:find_by_ids).and_return([])
+          allow(JobRenderer).to receive(:render_job_instances_with_cache).with(
+            anything,
+            template_blob_cache,
+            dns_encoder,
+            anything
+          )
         end
 
         context 'when variables need to be interpolated from config server' do
@@ -80,7 +92,6 @@ module Bosh::Director
             allow(update_step).to receive(:perform).ordered
             allow(planner).to receive(:instance_models).and_return([])
             allow(planner).to receive(:instance_groups).and_return([deployment_instance_group])
-            allow(job_renderer).to receive(:render_job_instances).with(deployment_instance_group.unignored_instance_plans)
             allow(notifier).to receive(:send_start_event)
             allow(notifier).to receive(:send_end_event).ordered
           end
@@ -96,7 +107,14 @@ module Bosh::Director
 
             let(:manifest) { instance_double( Bosh::Director::Manifest)}
 
+            let(:client_factory) { instance_double(ConfigServer::ClientFactory) }
+            let(:config_server_client) { instance_double(ConfigServer::ConfigServerClient) }
+
             before do
+              allow(ConfigServer::ClientFactory).to receive(:create).and_return(client_factory)
+              allow(client_factory).to receive(:create_client).and_return(config_server_client)
+              allow(config_server_client).to receive(:generate_values)
+
               allow(Models::Deployment).to receive(:find).with({name: 'deployment-name'}).and_return(deployment_model)
               allow(Time).to receive(:now).and_return(fixed_time)
               allow(deployment_model).to receive(:add_variable_set)
@@ -106,9 +124,15 @@ module Bosh::Director
               allow(deployment_instance_group).to receive(:unignored_instance_plans).and_return(instance_plans)
               allow(deployment_instance_group).to receive(:referenced_variable_sets).and_return([])
 
-              allow(job_renderer).to receive(:render_job_instances)
+              allow(JobRenderer).to receive(:render_job_instances_with_cache).with(anything, template_blob_cache, anything)
               allow(instance_plan1).to receive(:instance).and_return(instance1)
               allow(instance_plan2).to receive(:instance).and_return(instance2)
+              allow(JobRenderer).to receive(:render_job_instances_with_cache).with(
+                  deployment_instance_group.unignored_instance_plans,
+                  template_blob_cache,
+                  dns_encoder,
+                  anything
+              )
             end
 
             it 'should create a new variable set for the deployment and mark variable sets' do
@@ -188,7 +212,7 @@ module Bosh::Director
             expect(compile_step).to receive(:perform).ordered
             expect(update_step).to receive(:perform).ordered
             expect(notifier).to receive(:send_end_event).ordered
-            allow(job_renderer).to receive(:render_job_instances)
+            allow(JobRenderer).to receive(:render_job_instances_with_cache).with(anything, template_blob_cache, anything, logger)
             allow(planner).to receive(:instance_models).and_return([])
             allow(planner).to receive(:instance_groups).and_return([deployment_instance_group])
             allow(Models::Deployment).to receive(:[]).with(name: 'deployment-name').and_return(deployment_model)
@@ -198,21 +222,24 @@ module Bosh::Director
 
           it 'binds models, renders templates, compiles packages, runs post-deploy scripts, marks variable_sets' do
             expect(assembler).to receive(:bind_models)
-            expect(job_renderer).to receive(:render_job_instances).with(deployment_instance_group.unignored_instance_plans)
-            expect(job).to_not receive(:run_post_deploys)
+            expect(JobRenderer).to receive(:render_job_instances_with_cache).with(
+              deployment_instance_group.unignored_instance_plans,
+              template_blob_cache,
+              anything,
+              anything)
 
             job.perform
           end
 
           it 'should clean job blob cache at the end of the deploy' do
-            expect(job_renderer).to receive(:clean_cache!).ordered
+            expect(template_blob_cache).to receive(:clean_cache!)
 
             job.perform
           end
 
           context 'errands variables versioning' do
-            let(:errand_properties) { {'some-key' => 'some-value'} }
-            let(:resolved_links) { {'some-link-key' => 'some-link-value'} }
+            let(:errand_properties) { { 'some-key' => 'some-value' } }
+            let(:resolved_links) { { 'some-link-key' => 'some-link-value' } }
 
             before do
               allow(errand_instance_group).to receive(:properties).and_return(errand_properties)
@@ -232,9 +259,8 @@ module Bosh::Director
               DeploymentPlan::Variables.new([{'name' => 'placeholder_a', 'type' => 'password'}])
             end
 
-            let(:logger) { instance_double(Logging::Logger) }
             let(:client_factory) { instance_double(ConfigServer::ClientFactory) }
-            let(:config_server_client) { instance_double(ConfigServer::DisabledClient) }
+            let(:config_server_client) { instance_double(ConfigServer::ConfigServerClient) }
 
             before do
               allow(planner).to receive(:variables).and_return(variables)
@@ -289,14 +315,6 @@ module Bosh::Director
 
           it 'performs an update' do
             expect(job.perform).to eq('/deployments/deployment-name')
-          end
-
-          context 'when the deployment makes no changes to existing vms' do
-            it 'will not run post-deploy scripts' do
-              expect(job).to_not receive(:run_post_deploys)
-
-              job.perform
-            end
           end
 
           context 'when the deployment makes changes to existing vms' do
@@ -433,7 +451,7 @@ Unable to render instance groups for deployment. Errors are:
 
           before do
             allow(notifier).to receive(:send_start_event)
-            allow(job_renderer).to receive(:render_job_instances).and_raise(error_msgs)
+            allow(JobRenderer).to receive(:render_job_instances_with_cache).and_raise(error_msgs)
             allow(planner).to receive(:instance_models).and_return([])
             allow(Bosh::Director::Manifest).to receive(:load_from_hash).and_return(manifest)
           end
@@ -517,7 +535,7 @@ Unable to render instance groups for deployment. Errors are:
           let(:options) { {'dry_run' => true} }
 
           before do
-            allow(job_renderer).to receive(:render_job_instances)
+            allow(JobRenderer).to receive(:render_job_instances_with_cache).with(anything, template_blob_cache, anything)
             allow(planner).to receive(:instance_models).and_return([])
             allow(planner).to receive(:instance_groups).and_return([deployment_instance_group])
             allow(Bosh::Director::Manifest).to receive(:load_from_hash).and_return(manifest)
