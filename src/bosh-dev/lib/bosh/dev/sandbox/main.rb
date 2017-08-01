@@ -354,12 +354,12 @@ module Bosh::Dev::Sandbox
     def do_reset
       @cpi.kill_agents
 
-      copy_dest_path = '/tmp/snoopy/' + SecureRandom.uuid
+      copy_dest_path = '/tmp/agent-logs/' + SecureRandom.uuid
       FileUtils.mkdir_p(copy_dest_path)
       FileUtils.copy_entry(agent_tmp_path, copy_dest_path)
 
-      FileUtils.mkdir_p '/tmp/smurf/'
-      copy_nats_logs = '/tmp/smurf/' + SecureRandom.uuid
+      FileUtils.mkdir_p '/tmp/nats-logs/'
+      copy_nats_logs = '/tmp/nats-logs/' + SecureRandom.uuid
       if File.exist?(@nats_log_path)
         FileUtils.copy(@nats_log_path, copy_nats_logs)
         FileUtils.rm(@nats_log_path)

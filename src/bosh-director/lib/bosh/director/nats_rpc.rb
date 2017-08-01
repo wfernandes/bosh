@@ -9,6 +9,7 @@ module Bosh::Director
       @lock = Mutex.new
       @inbox_name = "director.#{Config.process_uuid}"
       @requests = {}
+      @subscribed = nil
     end
 
     # Returns a lazily connected NATS client
@@ -34,16 +35,20 @@ module Bosh::Director
     def send_request(client, request, &callback)
       request_id = generate_request_id
       request["reply_to"] = "#{@inbox_name}.#{request_id}"
-      @lock.synchronize do
-        @requests[request_id] = callback
-      end
 
       sanitized_log_message = sanitize_log_message(request)
       request_body = JSON.generate(request)
 
       @logger.debug("SENT: #{client} #{sanitized_log_message}")
       EM.schedule do
-        nats.publish(client, request_body)
+        @requests[request_id] = callback
+        if @ready
+          nats.publish(client, request_body)
+        else
+          nats.flush do
+            nats.publish(client, request_body)
+          end
+        end
       end
       request_id
     end
@@ -82,12 +87,10 @@ module Bosh::Director
           @logger.error("NATS client reconnected. @nats: #{@nats}. inbox_name: #{@inbox_name}. subject_id: #{@subject_id}. nats: #{nats}")
         end
 
-        @nats = NATS.connect(uri: @nats_uri, ssl: true, tls: {ca_file: @nats_server_ca_path} )
-        @subject_id = nil
-        resubscribe = true
-      end
-      if resubscribe
-        EM.schedule do
+        if @nats.nil?
+          @nats = NATS.connect(uri: @nats_uri, ssl: true, tls: {ca_file: @nats_server_ca_path} )
+          @subject_id = nil
+          @subscribed = nil
           subscribe_inbox
         end
       end
@@ -99,9 +102,9 @@ module Bosh::Director
       # double-check locking to reduce synchronization
       if @subject_id.nil?
         # nats lazy-load needs to be outside the synchronized block
-        client = nats
-        @subject_id = client.subscribe("#{@inbox_name}.>") do |message, _, subject|
+        @subject_id = nats.subscribe("#{@inbox_name}.>") do |message, _, subject|
           handle_response(message, subject)
+          @subscribed = true
         end
       end
     end
