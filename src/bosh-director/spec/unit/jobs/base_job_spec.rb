@@ -7,7 +7,6 @@ module Bosh::Director
     let(:task_dir) { File.join(tasks_dir, 'tasks', task_id.to_s) }
     before { allow(Config).to receive(:base_dir).and_return(tasks_dir) }
     before { allow(Config).to receive(:cloud_options).and_return({}) }
-    before { allow(Config).to receive(:runtime).and_return({'instance' => 'name/id', 'ip' => '127.0.127.0'}) }
 
     describe 'described_class.job_type' do
       it 'should complain that the method is not implemented' do
@@ -24,25 +23,13 @@ module Bosh::Director
 
       task = Models::Task.make(:id => task_id, :output => task_dir)
 
-      testjob_class.perform(task_id, 'workername1')
+      testjob_class.perform(task_id)
 
       task.refresh
       expect(task.state).to eq('done')
       expect(task.result).to eq('5')
 
       expect(Config.logger).to be_a_kind_of(Logging::Logger)
-    end
-
-    it 'should propagate the worker name to job runner' do
-      testjob_class = Class.new(Jobs::BaseJob) do
-        define_method :perform do ; end
-      end
-
-      Models::Task.make(:id => task_id, :output => task_dir)
-
-      expect(Bosh::Director::JobRunner).to receive(:new).with(anything, anything, 'workername1').and_call_original
-
-      testjob_class.perform(task_id, 'workername1')
     end
 
     it 'should pass on the rest of the arguments to the actual job' do
@@ -58,7 +45,7 @@ module Bosh::Director
 
       task = Models::Task.make(:output => task_dir)
 
-      testjob_class.perform(task_id, 'workername1', 'a', [:b], {:c => 5})
+      testjob_class.perform(task_id, 'a', [:b], {:c => 5})
 
       task.refresh
       expect(task.state).to eq('done')
@@ -74,7 +61,7 @@ module Bosh::Director
 
       task = Models::Task.make(:id => task_id, :output => task_dir)
 
-      testjob_class.perform(1, 'workername1')
+      testjob_class.perform(1)
 
       task.refresh
       expect(task.state).to eq('error')
@@ -88,14 +75,14 @@ module Bosh::Director
         end
       end
 
-      expect { testjob_class.perform(1, 'workername1') }.to raise_exception(TaskNotFound)
+      expect { testjob_class.perform(1) }.to raise_exception(TaskNotFound)
     end
 
     it 'should cancel task' do
       task = Models::Task.make(:id => 1, :output => task_dir,
                                :state => 'cancelling')
 
-      described_class.perform(1, 'workername1')
+      described_class.perform(1)
       task.refresh
       expect(task.state).to eq('cancelled')
       expect(Config.logger).to be_a_kind_of(Logging::Logger)
@@ -105,7 +92,7 @@ module Bosh::Director
       task = Models::Task.make(:id => task_id, :output => task_dir,
                                :state => 'timeout')
 
-      described_class.perform(task_id, 'workername1')
+      described_class.perform(task_id)
       task.refresh
       expect(task.state).to eq('cancelled')
       expect(Config.logger).to be_a_kind_of(Logging::Logger)

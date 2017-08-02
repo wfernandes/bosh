@@ -1,7 +1,5 @@
 #!/bin/bash
 
-echo "job=<%= spec.job.name %> index=<%= spec.index %> id=<%= spec.id %>"
-
 # Stdout and stderr
 echo -ne "<%= properties.errand1.stdout * properties.errand1.stdout_multiplier %>"
 

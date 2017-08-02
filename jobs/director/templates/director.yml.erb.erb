@@ -1,10 +1,6 @@
 <%=
 params = {
   'name' => p('director.name'),
-  'runtime' => {
-    'ip' => spec.ip,
-    'instance' => "#{spec.job.name}/#{spec.id}",
-  },
   'port' => p('director.backend_port'),
   'encryption' => p('director.encryption'),
   'max_tasks' => p('director.max_tasks'),
@@ -40,7 +36,6 @@ params = {
   'local_dns' => {
       'enabled' => p('director.local_dns.enabled'),
       'include_index' => p('director.local_dns.include_index'),
-      'use_dns_addresses' => p('director.local_dns.use_dns_addresses'),
   },
 }
 

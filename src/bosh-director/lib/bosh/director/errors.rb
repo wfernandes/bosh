@@ -307,14 +307,12 @@ module Bosh::Director
   ConfigServerDeploymentNameMissing = err(540006)
   ConfigServerIncorrectVariablePlacement = err(540007)
   ConfigServerInconsistentVariableState = err(540008)
-  ConfigServerDisabledError = err(540009)
 
   # CPI config
   CpiDuplicateName = err(550000)
 
-  # Spec Parser
+  # Variables
   VariablesInvalidFormat = err(560000)
-  FeaturesInvalidFormat = err(560001)
 
   # Authorization errors
   UnauthorizedToAccessDeployment = err(600000, UNAUTHORIZED)

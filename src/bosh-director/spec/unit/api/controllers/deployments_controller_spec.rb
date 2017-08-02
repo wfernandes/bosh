@@ -1299,8 +1299,7 @@ module Bosh::Director
             context 'authenticated access' do
               before do
                 authorize 'admin', 'admin'
-                deployment = Models::Deployment.make(name: 'errand')
-                Models::VariableSet.make(deployment_id: deployment.id)
+                Models::Deployment.make(name: 'errand')
                 release = Models::Release.make(name: 'bosh-release')
                 template1 = Models::Template.make(name: 'foobar', release: release)
                 template2 = Models::Template.make(name: 'errand1', release: release)
@@ -1359,7 +1358,7 @@ module Bosh::Director
                     'admin',
                     Jobs::RunErrand,
                     'run errand fake-errand-name from deployment fake-dep-name',
-                    ['fake-dep-name', 'fake-errand-name', false, false, []],
+                    ['fake-dep-name', 'fake-errand-name', false, false],
                     deployment,
                     ""
                   ).and_return(task)
@@ -1373,7 +1372,7 @@ module Bosh::Director
                     'admin',
                     Jobs::RunErrand,
                     'run errand fake-errand-name from deployment fake-dep-name',
-                    ['fake-dep-name', 'fake-errand-name', false, false, []],
+                    ['fake-dep-name', 'fake-errand-name', false, false],
                     deployment,
                     context_id
                   ).and_return(task)
@@ -1393,7 +1392,7 @@ module Bosh::Director
                     'admin',
                     Jobs::RunErrand,
                     'run errand fake-errand-name from deployment fake-dep-name',
-                    ['fake-dep-name', 'fake-errand-name', true, false, []],
+                    ['fake-dep-name', 'fake-errand-name', true, false],
                     deployment,
                     ""
                   ).and_return(task)
@@ -1406,25 +1405,12 @@ module Bosh::Director
                     'admin',
                     Jobs::RunErrand,
                     'run errand fake-errand-name from deployment fake-dep-name',
-                    ['fake-dep-name', 'fake-errand-name', false, true, []],
+                    ['fake-dep-name', 'fake-errand-name', false, true],
                     deployment,
                     ""
                   ).and_return(task)
 
                   perform({'when-changed' => true})
-                end
-
-                it 'enqueues a task to be run on select instances' do
-                  expect(job_queue).to receive(:enqueue).with(
-                    'admin',
-                    Jobs::RunErrand,
-                    'run errand fake-errand-name from deployment fake-dep-name',
-                    ['fake-dep-name', 'fake-errand-name', false, false, ['group1/uuid1', 'group2/uuid2']],
-                    deployment,
-                    ""
-                  ).and_return(task)
-
-                  perform({'instances' => ['group1/uuid1', 'group2/uuid2']})
                 end
               end
             end

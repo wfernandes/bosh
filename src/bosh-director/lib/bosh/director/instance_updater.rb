@@ -4,13 +4,13 @@ module Bosh::Director
   class InstanceUpdater
     MAX_RECREATE_ATTEMPTS = 3
 
-    def self.new_instance_updater(ip_provider, template_blob_cache, dns_encoder)
+    def self.new_instance_updater(ip_provider, job_renderer)
       logger = Config.logger
       disk_manager = DiskManager.new(logger)
       agent_broadcaster = AgentBroadcaster.new
       dns_state_updater = DirectorDnsStateUpdater.new
       vm_deleter = VmDeleter.new(logger, false, Config.enable_virtual_delete_vms)
-      vm_creator = VmCreator.new(logger, vm_deleter, disk_manager, template_blob_cache, dns_encoder, agent_broadcaster)
+      vm_creator = VmCreator.new(logger, vm_deleter, disk_manager, job_renderer, agent_broadcaster)
       vm_recreator = VmRecreator.new(vm_creator, vm_deleter)
       blobstore_client = App.instance.blobstores.blobstore
       rendered_templates_persistor = RenderedTemplatesPersister.new(blobstore_client, logger)
@@ -86,7 +86,7 @@ module Bosh::Director
             instance_model = instance_plan.new? ? instance_plan.instance.model : instance_plan.existing_instance
             @vm_deleter.delete_for_instance(instance_model)
           end
-          instance_plan.release_obsolete_network_plans(@ip_provider)
+          release_obsolete_ips(instance_plan)
           instance.update_state
           instance.update_variable_set
           update_dns(instance_plan)
@@ -102,7 +102,7 @@ module Bosh::Director
           recreated = true
         end
 
-        instance_plan.release_obsolete_network_plans(@ip_provider)
+        release_obsolete_ips(instance_plan)
 
         update_dns(instance_plan)
         @disk_manager.update_persistent_disk(instance_plan)
@@ -172,6 +172,16 @@ module Bosh::Director
         end
       end
       return action, context
+    end
+
+    def release_obsolete_ips(instance_plan)
+      instance_plan.network_plans
+        .select(&:obsolete?)
+        .each do |network_plan|
+        reservation = network_plan.reservation
+        @ip_provider.release(reservation)
+      end
+      instance_plan.release_obsolete_network_plans
     end
 
     def stop(instance_plan)

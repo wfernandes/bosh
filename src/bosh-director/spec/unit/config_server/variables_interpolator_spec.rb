@@ -4,7 +4,7 @@ describe Bosh::Director::ConfigServer::VariablesInterpolator do
   subject(:variables_interpolator) { described_class.new }
 
   let(:client_factory) { double(Bosh::Director::ConfigServer::ClientFactory) }
-  let(:config_server_client) { instance_double(Bosh::Director::ConfigServer::ConfigServerClient) }
+  let(:config_server_client) { instance_double(Bosh::Director::ConfigServer::EnabledClient) }
   let(:deployment_name) {'my_deployment_name'}
 
   before do

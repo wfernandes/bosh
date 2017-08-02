@@ -46,9 +46,9 @@ module Bosh::Director
       dns_record_info
     end
 
-    def network_address(prefer_dns_entry)
+    def network_address
       network_name = @default_network['gateway']
-      get_address(network_name, to_hash[network_name], prefer_dns_entry)
+      get_address(network_name, to_hash[network_name])
     end
 
     # @param [Boolean] prefer_dns_entry Flag for using DNS entry when available.

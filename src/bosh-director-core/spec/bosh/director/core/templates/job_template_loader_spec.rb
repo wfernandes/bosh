@@ -2,6 +2,7 @@
 # encoding is needed for correctly comparing expected ERB below
 require 'spec_helper'
 require 'bosh/director/core/templates/job_template_loader'
+require 'bosh/director/core/templates/caching_job_template_fetcher'
 require 'archive/tar/minitar'
 require 'stringio'
 require 'yaml'
@@ -44,7 +45,7 @@ def write_tar(configuration_files, manifest, monit, options)
   io
 end
 
-def create_job_tarball(name, monit, configuration_files, options = {})
+def create_job(name, monit, configuration_files, options = {})
   manifest = {
     'name' => name,
     'templates' => {},
@@ -56,102 +57,52 @@ def create_job_tarball(name, monit, configuration_files, options = {})
   end
 
   io = write_tar(configuration_files, manifest, monit, options)
-  ball = gzip(io.string)
 
-  tmp_file = Tempfile.new('blob')
-  File.open(tmp_file.path, 'w') { |f| f.write(ball) }
-
-  tmp_file.path
+  gzip(io.string)
 end
 
 module Bosh::Director::Core::Templates
   describe JobTemplateLoader do
     describe '#process' do
-      subject(:job_template_loader) do
-        JobTemplateLoader.new(logger, TemplateBlobCache.new, dns_encoder)
-      end
-
+      subject(:job_template_loader) { JobTemplateLoader.new(logger, CachingJobTemplateFetcher.new) }
       let(:logger) { double('Logger', debug: nil) }
-      let(:dns_encoder) { double('fake dns encoder') }
 
       it 'returns the jobs template erb objects' do
-        tarball_path = create_job_tarball(
-          'release-job-name',
-          'monit file erb contents',
-          { 'test' => {
-            'destination' => 'test_dst',
-            'contents' => 'test contents' }
-          }
-        )
+        template_contents = create_job('foo', 'monit file',
+                                       { 'test' => {
+                                         'destination' => 'test_dst',
+                                         'contents' => 'test contents' }
+                                       })
 
-        job = double('Bosh::Director::DeploymentPlan::Job',
-          download_blob: tarball_path,
-          name: 'plan-job-name',
-          blobstore_id: 'blob-id'
-        )
+        tmp_file = Tempfile.new('blob')
+        File.open(tmp_file.path, 'w') { |f| f.write(template_contents) }
+        job_template = double('Bosh::Director::DeploymentPlan::Job', download_blob: tmp_file.path, name: 'foo', blobstore_id: 'blob-id')
 
-        monit_erb = instance_double(SourceErb)
-        job_template_erb = instance_double(SourceErb)
-        fake_renderer = instance_double(JobTemplateRenderer)
+        container = job_template_loader.process(job_template)
 
-        expect(SourceErb).to receive(:new).with(
-          'monit',
-          'monit',
-          'monit file erb contents',
-          'plan-job-name',
-        ).and_return(monit_erb)
+        expect(container.monit_erb.erb.filename).to eq('foo/monit')
+        expect(container.monit_erb.erb.src).to eq ERB.new('monit file').src
 
-        expect(SourceErb).to receive(:new).with(
-          'test',
-          'test_dst',
-          'test contents',
-          'plan-job-name'
-        ).and_return(job_template_erb)
-
-        expect(JobTemplateRenderer).to receive(:new).with(
-          'plan-job-name',
-          'release-job-name',
-          monit_erb,
-          [job_template_erb],
-          logger,
-          dns_encoder
-        ).and_return fake_renderer
-
-        generated_renderer = job_template_loader.process(job)
-        expect(generated_renderer).to eq(fake_renderer)
+        source_erb = container.source_erbs.first
+        expect(source_erb.src_name).to eq('test')
+        expect(source_erb.dest_name).to eq('test_dst')
+        expect(source_erb.erb.filename).to eq('foo/test')
+        expect(source_erb.erb.src).to eq ERB.new('test contents').src
       end
 
-      it 'includes only monit erb object when no other templates exist' do
-        tarball_path = create_job_tarball('release-job-no-templates', 'monit file erb contents', {})
+      it 'returns only monit erb object when no other templates exist' do
+        template_contents = create_job('foo', 'monit file', {})
 
-        job = double(
-          'Bosh::Director::DeploymentPlan::Job',
-          download_blob: tarball_path,
-          name: 'plan-job-name',
-          blobstore_id: 'blob-id'
-        )
+        tmp_file = Tempfile.new('blob')
+        File.open(tmp_file.path, 'w') { |f| f.write(template_contents) }
+        job_template = double('Bosh::Director::DeploymentPlan::Job', download_blob: tmp_file.path, name: 'foo', blobstore_id: 'blob-id')
 
-        monit_erb = instance_double(SourceErb)
-        fake_renderer = instance_double(JobTemplateRenderer)
+        container = job_template_loader.process(job_template)
 
-        expect(SourceErb).to receive(:new).once.with(
-          'monit',
-          'monit',
-          'monit file erb contents',
-          'plan-job-name',
-        ).and_return(monit_erb)
+        expect(container.monit_erb.erb.filename).to eq('foo/monit')
+        expect(container.monit_erb.erb.src).to eq ERB.new('monit file').src
 
-        expect(JobTemplateRenderer).to receive(:new).with(
-          'plan-job-name',
-          'release-job-no-templates',
-          monit_erb,
-          [],
-          logger,
-          dns_encoder
-        ).and_return fake_renderer
-
-        generated_renderer = job_template_loader.process(job)
-        expect(generated_renderer).to eq(fake_renderer)
+        expect(container.source_erbs).to eq([])
       end
     end
   end

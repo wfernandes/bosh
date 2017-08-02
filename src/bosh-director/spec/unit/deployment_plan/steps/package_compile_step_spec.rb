@@ -8,9 +8,8 @@ module Bosh::Director
     let(:cloud) { Config.cloud }
     let(:vm_deleter) { VmDeleter.new(Config.logger, false, false) }
     let(:agent_broadcaster) { AgentBroadcaster.new }
-    let(:dns_encoder) { instance_double(DnsEncoder) }
-    let(:vm_creator) { VmCreator.new(Config.logger, vm_deleter, disk_manager, template_blob_cache, dns_encoder, agent_broadcaster) }
-    let(:template_blob_cache) { instance_double(Bosh::Director::Core::Templates::TemplateBlobCache) }
+    let(:vm_creator) { VmCreator.new(Config.logger, vm_deleter, disk_manager, job_renderer, agent_broadcaster) }
+    let(:job_renderer) { instance_double(JobRenderer, render_job_instances: nil) }
     let(:disk_manager) { DiskManager.new(logger) }
     let(:release_version_model) { Models::ReleaseVersion.make(version: 'new') }
     let(:reuse_compilation_vms) { false }
@@ -85,6 +84,9 @@ module Bosh::Director
       allow(ThreadPool).to receive_messages(new: thread_pool) # Using threads for real, even accidentally, makes debugging a nightmare
 
       allow(instance_deleter).to receive(:delete_instance_plan)
+
+      @blobstore = double(:blobstore)
+      allow(Config).to receive(:blobstore).and_return(@blobstore)
 
       @director_job = instance_double('Bosh::Director::Jobs::BaseJob')
       allow(Config).to receive(:current_job).and_return(@director_job)
@@ -559,7 +561,7 @@ module Bosh::Director
       let(:reuse_compilation_vms) { true }
       before { allow(SecureRandom).to receive(:uuid).and_return('deadbeef') }
 
-      let(:vm_creator) { Bosh::Director::VmCreator.new(logger, vm_deleter, disk_manager, template_blob_cache, dns_encoder, agent_broadcaster) }
+      let(:vm_creator) { Bosh::Director::VmCreator.new(logger, vm_deleter, disk_manager, job_renderer, agent_broadcaster) }
       let(:disk_manager) { DiskManager.new(logger) }
 
       it 'reuses compilation VMs' do
@@ -837,6 +839,7 @@ module Bosh::Director
           Bosh::Director::Config.trusted_certs = DIRECTOR_TEST_CERTS
 
           allow(cloud).to receive(:create_vm).and_return('new-vm-cid')
+          allow(vm_creator).to receive(:apply_state)
           allow(AgentClient).to receive_messages(with_vm_credentials_and_agent_id: client)
           allow(cloud).to receive(:delete_vm)
           allow(client).to receive(:update_settings)

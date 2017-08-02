@@ -1,12 +1,5 @@
 module Bosh::Director::Core::Templates
-  class TemplateBlobCache
-    def self.with_fresh_cache
-      cache = new()
-      yield cache
-    ensure
-      cache.clean_cache!
-    end
-
+  class CachingJobTemplateFetcher
     def initialize
       @downloaded_paths = {}
       @semaphore = Mutex.new

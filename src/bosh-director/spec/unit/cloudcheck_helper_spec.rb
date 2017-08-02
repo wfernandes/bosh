@@ -33,11 +33,10 @@ module Bosh::Director
     let(:spec) { {'apply' => 'spec', 'env' => {'vm_env' => 'json'}} }
     let(:deployment_model) { Models::Deployment.make(manifest: YAML.dump(Bosh::Spec::Deployments.legacy_manifest)) }
     let(:test_problem_handler) { ProblemHandlers::Base.create_by_type(:test_problem_handler, instance.uuid, {}) }
-    let(:dns_encoder) { LocalDnsEncoderManager.create_dns_encoder }
     let(:vm_deleter) { Bosh::Director::VmDeleter.new(logger, false, false) }
-    let(:vm_creator) { Bosh::Director::VmCreator.new(logger, vm_deleter, nil, template_cache, dns_encoder, agent_broadcaster) }
+    let(:vm_creator) { Bosh::Director::VmCreator.new(logger, vm_deleter, nil, job_renderer, agent_broadcaster) }
     let(:agent_broadcaster) { instance_double(AgentBroadcaster) }
-    let(:template_cache) { Bosh::Director::Core::Templates::TemplateBlobCache.new }
+    let(:job_renderer) { JobRenderer.create }
     let(:agent_client) { instance_double(AgentClient) }
     let(:event_manager) { Api::EventManager.new(true) }
     let(:update_job) { instance_double(Bosh::Director::Jobs::UpdateDeployment, username: 'user', task_id: 42, event_manager: event_manager) }
@@ -51,7 +50,7 @@ module Bosh::Director
       allow(agent_client).to receive(:sync_dns) do |_,_,_,&blk|
         blk.call({'value' => 'synced'})
       end.and_return(0)
-      allow(Bosh::Director::Core::Templates::TemplateBlobCache).to receive(:new).and_return(template_cache)
+      allow(JobRenderer).to receive(:create).and_return(job_renderer)
       allow(VmDeleter).to receive(:new).and_return(vm_deleter)
       allow(VmCreator).to receive(:new).and_return(vm_creator)
       allow(Config).to receive(:current_job).and_return(update_job)
@@ -225,7 +224,7 @@ module Bosh::Director
             expect(powerdns_manager).to receive(:update_dns_record_for_instance).with(instance, {'index.record.name' => nil, 'uuid.record.name' => nil})
             expect(powerdns_manager).to receive(:flush_dns_cache)
 
-            expect(template_cache).to receive(:clean_cache!)
+            expect(job_renderer).to receive(:clean_cache!)
           end
 
           it 'recreates the VM' do

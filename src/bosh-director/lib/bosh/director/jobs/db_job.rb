@@ -15,10 +15,6 @@ module Bosh::Director
         raise DirectorError, "Invalid director job class `#{job_class}'. It should specify queue value." unless queue_name
       end
 
-      def before(job)
-        @worker_name = job.locked_by
-      end
-
       def perform
         Config.db.transaction(:retry_on => [Sequel::DatabaseConnectionError]) do
           if Models::Task.where(id: @task_id, state: 'queued').update(state: 'processing') != 1
@@ -33,7 +29,7 @@ module Bosh::Director
             perform_args = decode(encode(@args))
           end
 
-          @job_class.perform(@task_id, @worker_name, *perform_args)
+          @job_class.perform(@task_id, *perform_args)
         end
 
         if process_status.signaled?
@@ -78,21 +74,14 @@ module Bosh::Director
   class ForkedProcess
     def self.run
       pid = Process.fork do
-        begin
-          EM.run do
-            EM.defer do
-              begin
-                yield
-              ensure
-                # unit tests can raise errors before reactor is running
-                EM.stop if EM.reactor_running?
-              end
+        EM.run do
+          EM.defer do
+            begin
+              yield
+            ensure
+              EM.stop
             end
           end
-        rescue Exception => e
-          Config.logger.error("Fatal error from event machine: #{e}\n#{e.backtrace.join("\n")}")
-
-          raise e
         end
       end
       Process.waitpid(pid)

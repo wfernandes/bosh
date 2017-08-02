@@ -4,11 +4,7 @@ module Bosh::Director
   describe Jobs::AttachDisk do
 
     let(:manifest) {{'tags' => {'mytag' => 'myvalue'}}}
-    let(:deployment) {
-      deployment = Models::Deployment.make(name: deployment_name, manifest: YAML.dump(manifest))
-      Models::VariableSet.make(deployment_id: deployment.id)
-      deployment
-    }
+    let(:deployment) { Models::Deployment.make(name: deployment_name, manifest: YAML.dump(manifest)) }
     let(:deployment_name) { 'fake_deployment_name' }
     let(:disk_cid) { 'fake_disk_cid' }
     let(:job_name) { 'job_name' }

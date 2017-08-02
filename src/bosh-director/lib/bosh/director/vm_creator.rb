@@ -7,12 +7,11 @@ module Bosh::Director
     include EncryptionHelper
     include PasswordHelper
 
-    def initialize(logger, vm_deleter, disk_manager, template_blob_cache, dns_encoder, agent_broadcaster)
+    def initialize(logger, vm_deleter, disk_manager, job_renderer, agent_broadcaster)
       @logger = logger
       @vm_deleter = vm_deleter
       @disk_manager = disk_manager
-      @template_blob_cache = template_blob_cache
-      @dns_encoder = dns_encoder
+      @job_renderer = job_renderer
       @agent_broadcaster = agent_broadcaster
 
       @config_server_client_factory = Bosh::Director::ConfigServer::ClientFactory.create(@logger)
@@ -32,7 +31,13 @@ module Bosh::Director
                 @logger.info('Creating missing VM')
                 disks = [instance.model.managed_persistent_disk_cid].compact
                 create_for_instance_plan(instance_plan, disks, tags)
-                instance_plan.release_obsolete_network_plans(ip_provider)
+                instance_plan.network_plans
+                  .select(&:obsolete?)
+                  .each do |network_plan|
+                  reservation = network_plan.reservation
+                  ip_provider.release(reservation)
+                end
+                instance_plan.release_obsolete_network_plans
               end
             end
           end
@@ -114,7 +119,7 @@ module Bosh::Director
       unless instance_plan.instance.compilation?
         # re-render job templates with updated dynamic network settings
         @logger.debug("Re-rendering templates with updated dynamic networks: #{instance_plan.spec.as_template_spec['networks']}")
-        JobRenderer.render_job_instances_with_cache([instance_plan], @template_blob_cache, @dns_encoder, @logger)
+        @job_renderer.render_job_instances([instance_plan])
       end
     end
 

@@ -21,10 +21,9 @@ module Bosh::Director
     before { FileUtils.mkdir_p(task_dir) }
 
     before { allow(Config).to receive(:cloud_options).and_return({}) }
-    before { allow(Config).to receive(:runtime).and_return({'instance' => 'name/id', 'ip' => '127.0.127.0'}) }
 
     def make_runner(job_class, task_id)
-      JobRunner.new(job_class, task_id, 'workername1')
+      JobRunner.new(job_class, task_id)
     end
 
     it "doesn't accept job class that is not a subclass of base job" do
@@ -84,16 +83,6 @@ module Bosh::Director
       expect(config.result).to eq(task_result)
     end
 
-    it 'sets up task logs: debug, event, result' do
-      runner = make_runner(sample_job_class, 42)
-
-      logger = Logging::Repository.instance().fetch('DirectorJobRunner')
-      allow(logger).to receive(:info)
-      expect(logger).to receive(:info).with("Running from worker 'workername1' on name/id (127.0.127.0)")
-
-      runner.run
-    end
-
     it 'handles task cancellation' do
       job = Class.new(Jobs::BaseJob) do
         define_method(:perform) do |*args|
@@ -134,7 +123,7 @@ module Bosh::Director
         expect(Bosh::Director::Models::Dns::Domain.all).to be_empty
         Bosh::Director::Models::Instance.make(job: 'test', index: 1)
 
-        runner = JobRunner.new(sample_job_class, 42, 'workername1')
+        runner = JobRunner.new(sample_job_class, 42)
         runner.run
 
         expect(Bosh::Director::Models::Dns::Domain.all).to be_empty
@@ -161,7 +150,7 @@ module Bosh::Director
           Bosh::Director::Config.dns_db = nil
           Bosh::Director::Models::Instance.make(job: 'test', index: 1)
 
-          runner = JobRunner.new(sample_job_class, 42, 'workername1')
+          runner = JobRunner.new(sample_job_class, 42)
           runner.run
 
           expect(Bosh::Director::Models::Instance.find(job: 'test').index).to eq 1
