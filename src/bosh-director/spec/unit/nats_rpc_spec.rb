@@ -31,6 +31,9 @@ describe Bosh::Director::NatsRpc do
     allow(EM).to receive(:schedule).and_yield
     allow(nats_rpc).to receive(:generate_request_id).and_return('req1')
     allow(nats).to receive(:subscribe)
+    allow(nats).to receive(:flush) do |&blk|
+      blk.call()
+    end
   end
 
   describe '#nats' do
