@@ -2,9 +2,12 @@ module Bosh::Director
   # Remote procedure call client wrapping NATS
   class NatsRpc
 
-    def initialize(nats_uri, nats_server_ca_path)
+    def initialize(nats_uri, nats_server_ca_path, nats_client_private_key_path, nats_client_certificate_path)
       @nats_uri = nats_uri
       @nats_server_ca_path = nats_server_ca_path
+      @nats_client_private_key_path = nats_client_private_key_path
+      @nats_client_certificate_path = nats_client_certificate_path
+
       @logger = Config.logger
       @lock = Mutex.new
       @inbox_name = "director.#{Config.process_uuid}"
@@ -74,25 +77,25 @@ module Bosh::Director
           redacted_message = password.nil? ? "NATS client error: #{e}" : "NATS client error: #{e}".gsub(password, '*******')
           @logger.error(redacted_message)
         end
-
         NATS.on_disconnect do |reason|
           @logger.error("NATS client disconnected. @nats: #{@nats}. inbox_name: #{@inbox_name}. subject_id: #{@subject_id}. reason: #{reason}")
         end
-
-        NATS.on_close do
-          @logger.error("NATS client closed. @nats: #{@nats}. inbox_name: #{@inbox_name}. subject_id: #{@subject_id}")
-        end
-
-        NATS.on_reconnect do |nats|
-          @logger.error("NATS client reconnected. @nats: #{@nats}. inbox_name: #{@inbox_name}. subject_id: #{@subject_id}. nats: #{nats}")
-        end
-
-        if @nats.nil?
-          @nats = NATS.connect(uri: @nats_uri, ssl: true, tls: {ca_file: @nats_server_ca_path} )
-          @subject_id = nil
-          @subscribed = nil
-          subscribe_inbox
-        end
+        options = {
+          :uri => @nats_uri,
+          :ssl => true,
+          :tls => {
+            :private_key_file => @nats_client_private_key_path,
+            :cert_chain_file  => @nats_client_certificate_path,
+            # Can enable verify_peer functionality optionally by passing
+            # the location of a ca_file.
+            :verify_peer => true,
+            :ca_file => @nats_server_ca_path
+          }
+        }
+        @nats = NATS.connect(options)
+        @subject_id = nil
+        @subscribed = nil
+        subscribe_inbox
       end
       @nats
     end

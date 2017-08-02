@@ -1,4 +1,5 @@
 require 'spec_helper'
+require 'pp'
 
 describe 'CPI calls', type: :integration do
   with_reset_sandbox_before_each
@@ -7,29 +8,27 @@ describe 'CPI calls', type: :integration do
     expect(invocation.inputs['metadata']['name']).to eq("#{invocation.inputs['metadata']['job']}/#{invocation.inputs['metadata']['id']}")
   end
 
+  let(:ca_cert) {
+    File.read(current_sandbox.nats_certificate_paths['ca_path'])
+  }
+  let(:client_cert) {
+    File.read(current_sandbox.nats_certificate_paths['clients']['director']['certificate_path'])
+  }
+  let(:client_key) {
+    File.read(current_sandbox.nats_certificate_paths['clients']['director']['private_key_path'])
+  }
+
   let(:expected_mbus) {
     {
       'urls' => [ /nats:\/\/127\.0\.0\.1:\d+/ ],
-      'ca' => '-----BEGIN CERTIFICATE-----
-MIICsjCCAhugAwIBAgIJAJgyGeIL1aiPMA0GCSqGSIb3DQEBBQUAMEUxCzAJBgNV
-BAYTAkFVMRMwEQYDVQQIEwpTb21lLVN0YXRlMSEwHwYDVQQKExhJbnRlcm5ldCBX
-aWRnaXRzIFB0eSBMdGQwIBcNMTUwMzE5MjE1NzAxWhgPMjI4ODEyMzEyMTU3MDFa
-MEUxCzAJBgNVBAYTAkFVMRMwEQYDVQQIEwpTb21lLVN0YXRlMSEwHwYDVQQKExhJ
-bnRlcm5ldCBXaWRnaXRzIFB0eSBMdGQwgZ8wDQYJKoZIhvcNAQEBBQADgY0AMIGJ
-AoGBAOTD37e9wnQz5fHVPdQdU8rjokOVuFj0wBtQLNO7B2iN+URFaP2wi0KOU0ye
-njISc5M/mpua7Op72/cZ3+bq8u5lnQ8VcjewD1+f3LCq+Os7iE85A/mbEyT1Mazo
-GGo9L/gfz5kNq78L9cQp5lrD04wF0C05QtL8LVI5N9SqT7mlAgMBAAGjgacwgaQw
-HQYDVR0OBBYEFNtN+q97oIhvyUEC+/Sc4q0ASv4zMHUGA1UdIwRuMGyAFNtN+q97
-oIhvyUEC+/Sc4q0ASv4zoUmkRzBFMQswCQYDVQQGEwJBVTETMBEGA1UECBMKU29t
-ZS1TdGF0ZTEhMB8GA1UEChMYSW50ZXJuZXQgV2lkZ2l0cyBQdHkgTHRkggkAmDIZ
-4gvVqI8wDAYDVR0TBAUwAwEB/zANBgkqhkiG9w0BAQUFAAOBgQCZKuxfGc/RrMlz
-aai4+5s0GnhSuq0CdfnpwZR+dXsjMO6dlrD1NgQoQVhYO7UbzktwU1Hz9Mc3XE7t
-HCu8gfq+3WRUgddCQnYJUXtig2yAqmHf/WGR9yYYnfMUDKa85i0inolq1EnLvgVV
-K4iijxtW0XYe5R1Od6lWOEKZ6un9Ag==
------END CERTIFICATE-----
-'
+      'cert' => {
+        'ca' => ca_cert,
+        'certificate' =>  client_cert,
+        'private_key' => client_key
+      }
     }
   }
+
   let(:expected_blobstore_config) {
     {
       "provider" =>"local",
@@ -62,6 +61,14 @@ K4iijxtW0XYe5R1Od6lWOEKZ6un9Ag==
       })
 
       expect(invocations[2].method_name).to eq('create_vm')
+
+      puts '======================='
+      pp invocations[2].inputs
+      puts '======================='
+      pp expected_mbus
+      puts '======================='
+
+
       expect(invocations[2].inputs).to match({
         'agent_id' => String,
         'stemcell_id' => String,
