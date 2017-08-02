@@ -45,7 +45,7 @@ module Bosh::Director
       @logger.debug("SENT: #{client} #{sanitized_log_message}")
       EM.schedule do
         @requests[request_id] = callback
-        if @ready
+        if @subscribed
           nats.publish(client, request_body)
         else
           nats.flush do
