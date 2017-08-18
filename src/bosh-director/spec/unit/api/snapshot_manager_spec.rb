@@ -160,7 +160,17 @@ module Bosh::Director
             director_uuid: Config.uuid,
             deployment: 'deployment',
             job: 'job',
-            index: 0
+            index: 0,
+            tag1: 'value1',
+            tag2: 'value2'
+          }
+        }
+
+        let(:tags){
+          {
+            tag1: 'value1',
+            tag2: 'value2',
+            job: 'job2'
           }
         }
 
@@ -170,7 +180,7 @@ module Bosh::Director
             expect(cloud_factory).to receive(:get_for_az).with(@instance2.availability_zone).and_return(cloud)
 
             expect {
-              described_class.take_snapshot(@instance2, {})
+              described_class.take_snapshot(@instance2, tags, {})
             }.to_not change { Models::Snapshot.count }
           end
         end
@@ -180,7 +190,7 @@ module Bosh::Director
           expect(cloud_factory).to receive(:get_for_az).with(@instance.availability_zone).and_return(cloud)
 
           expect {
-            expect(described_class.take_snapshot(@instance, {})).to eq %w[snap0c]
+            expect(described_class.take_snapshot(@instance, tags, {})).to eq %w[snap0c]
           }.to change { Models::Snapshot.count }.by 1
         end
 
@@ -188,7 +198,7 @@ module Bosh::Director
           it 'it sets the clean column to true in the db' do
             expect(Config.cloud).to receive(:snapshot_disk).with('disk0', metadata).and_return('snap0c')
             expect(cloud_factory).to receive(:get_for_az).with(@instance.availability_zone).and_return(cloud)
-            expect(described_class.take_snapshot(@instance, { :clean => true })).to eq %w[snap0c]
+            expect(described_class.take_snapshot(@instance, tags, { :clean => true })).to eq %w[snap0c]
 
             snapshot = Models::Snapshot.find(snapshot_cid: 'snap0c')
             expect(snapshot.clean).to be(true)
@@ -199,7 +209,7 @@ module Bosh::Director
           it 'does nothing' do
             allow(Config).to receive(:enable_snapshots).and_return(false)
 
-            expect(described_class.take_snapshot(@instance)).to be_empty
+            expect(described_class.take_snapshot(@instance, tags)).to be_empty
           end
         end
 
@@ -208,7 +218,7 @@ module Bosh::Director
             allow(Config.cloud).to receive(:snapshot_disk).and_raise(Bosh::Clouds::NotImplemented)
             expect(cloud_factory).to receive(:get_for_az).with(@instance.availability_zone).and_return(cloud)
 
-            expect(described_class.take_snapshot(@instance)).to be_empty
+            expect(described_class.take_snapshot(@instance, tags)).to be_empty
           end
         end
       end

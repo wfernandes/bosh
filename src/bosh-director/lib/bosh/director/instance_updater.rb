@@ -67,7 +67,7 @@ module Bosh::Director
           # current state
           if instance.model.state != 'stopped'
             stop(instance_plan)
-            take_snapshot(instance)
+            take_snapshot(instance, instance_plan.tags)
           end
 
           # desired state
@@ -190,8 +190,8 @@ module Bosh::Director
       stopper.stop
     end
 
-    def take_snapshot(instance)
-      Api::SnapshotManager.take_snapshot(instance.model, clean: true)
+    def take_snapshot(instance, metadata)
+      Api::SnapshotManager.take_snapshot(instance.model, metadata, clean: true)
     end
 
     def update_dns(instance_plan)

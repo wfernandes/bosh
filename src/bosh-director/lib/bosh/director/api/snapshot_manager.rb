@@ -66,7 +66,7 @@ module Bosh::Director
         end
       end
 
-      def self.take_snapshot(instance, options={})
+      def self.take_snapshot(instance, metadata, options={})
         unless Config.enable_snapshots
           Config.logger.info('Snapshots are disabled; skipping')
           return []
@@ -74,14 +74,14 @@ module Bosh::Director
 
         clean = options.fetch(:clean, false)
         snapshot_cids = []
-        metadata = {
+        metadata = metadata.merge({
             deployment: instance.deployment.name,
             job: instance.job,
             index: instance.index,
             director_name: Config.name,
             director_uuid: Config.uuid,
             agent_id: instance.agent_id
-        }
+        })
 
         cloud = CloudFactory.create_with_latest_configs.get_for_az(instance.availability_zone)
         instance.persistent_disks.each do |disk|
